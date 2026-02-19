@@ -1,0 +1,1360 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FPRTM — Sistema de Ratings y Membresía</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #0a1628;
+    --navy2: #0f2040;
+    --blue: #1a3a6e;
+    --accent: #e8b84b;
+    --accent2: #f4d078;
+    --green: #22c55e;
+    --red: #ef4444;
+    --orange: #f97316;
+    --text: #f0f4ff;
+    --muted: #8899bb;
+    --border: rgba(255,255,255,0.08);
+    --card: rgba(255,255,255,0.04);
+    --card2: rgba(255,255,255,0.07);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--navy);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* BG texture */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: 
+      radial-gradient(ellipse 80% 50% at 10% 0%, rgba(26,58,110,0.4) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 90% 100%, rgba(232,184,75,0.06) 0%, transparent 50%);
+    pointer-events: none; z-index: 0;
+  }
+
+  /* ─── HEADER ─── */
+  header {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(10,22,40,0.95);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+    display: flex; align-items: center; justify-content: space-between;
+    height: 64px;
+  }
+
+  .logo {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .logo-badge {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--accent), var(--blue));
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Bebas Neue'; font-size: 18px; color: var(--navy);
+    letter-spacing: 0.5px;
+  }
+  .logo-text { line-height: 1; }
+  .logo-text strong { font-family: 'Bebas Neue'; font-size: 20px; letter-spacing: 2px; color: var(--text); }
+  .logo-text span { font-size: 11px; color: var(--muted); letter-spacing: 1px; }
+
+  nav { display: flex; gap: 4px; }
+  nav button {
+    background: none; border: none; color: var(--muted);
+    padding: 8px 16px; border-radius: 8px; cursor: pointer;
+    font-family: 'DM Sans'; font-size: 14px; font-weight: 500;
+    transition: all 0.2s;
+  }
+  nav button:hover { color: var(--text); background: var(--card2); }
+  nav button.active { color: var(--accent); background: rgba(232,184,75,0.1); }
+
+  .admin-btn {
+    background: var(--accent) !important;
+    color: var(--navy) !important;
+    font-weight: 700 !important;
+    padding: 8px 20px !important;
+  }
+  .admin-btn:hover { background: var(--accent2) !important; }
+
+  /* ─── PAGES ─── */
+  .page { display: none; position: relative; z-index: 1; }
+  .page.active { display: block; animation: fadeUp 0.3s ease; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .container { max-width: 1200px; margin: 0 auto; padding: 40px 32px; }
+
+  /* ─── PAGE HERO ─── */
+  .page-hero {
+    padding: 48px 32px 32px;
+    max-width: 1200px; margin: 0 auto;
+  }
+  .page-hero .overline {
+    font-family: 'DM Mono'; font-size: 11px; letter-spacing: 3px;
+    color: var(--accent); text-transform: uppercase; margin-bottom: 8px;
+  }
+  .page-hero h1 {
+    font-family: 'Bebas Neue'; font-size: 56px; letter-spacing: 3px;
+    line-height: 1; color: var(--text);
+  }
+  .page-hero p { color: var(--muted); margin-top: 8px; font-size: 15px; }
+
+  /* ─── SEARCH BAR ─── */
+  .search-wrap {
+    max-width: 1200px; margin: 0 auto; padding: 0 32px 32px;
+  }
+  .search-box {
+    display: flex; gap: 12px; align-items: center;
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px 20px;
+    transition: border-color 0.2s;
+  }
+  .search-box:focus-within { border-color: var(--accent); }
+  .search-box input {
+    background: none; border: none; outline: none;
+    color: var(--text); font-family: 'DM Sans'; font-size: 15px;
+    flex: 1;
+  }
+  .search-box input::placeholder { color: var(--muted); }
+  .search-icon { color: var(--muted); font-size: 18px; }
+
+  /* ─── FILTERS ─── */
+  .filters {
+    max-width: 1200px; margin: 0 auto; padding: 0 32px 24px;
+    display: flex; gap: 8px; flex-wrap: wrap;
+  }
+  .filter-chip {
+    padding: 6px 16px; border-radius: 99px;
+    border: 1px solid var(--border);
+    background: var(--card); color: var(--muted);
+    cursor: pointer; font-size: 13px; font-weight: 500;
+    transition: all 0.2s;
+  }
+  .filter-chip:hover { border-color: var(--accent); color: var(--accent); }
+  .filter-chip.on { background: rgba(232,184,75,0.15); border-color: var(--accent); color: var(--accent); }
+
+  /* ─── STATS ROW ─── */
+  .stats-row {
+    max-width: 1200px; margin: 0 auto; padding: 0 32px 32px;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+  }
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px 24px;
+  }
+  .stat-card .label { font-size: 12px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; }
+  .stat-card .value { font-family: 'Bebas Neue'; font-size: 36px; color: var(--text); line-height: 1; }
+  .stat-card .sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .stat-card.gold { border-color: rgba(232,184,75,0.3); }
+  .stat-card.gold .value { color: var(--accent); }
+
+  /* ─── PLAYER GRID ─── */
+  .player-grid {
+    max-width: 1200px; margin: 0 auto; padding: 0 32px;
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;
+  }
+
+  .player-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px 24px;
+    display: flex; align-items: center; gap: 16px;
+    cursor: pointer; transition: all 0.2s;
+    position: relative; overflow: hidden;
+  }
+  .player-card::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+    width: 3px; background: transparent; transition: background 0.2s;
+  }
+  .player-card:hover { background: var(--card2); border-color: rgba(255,255,255,0.15); transform: translateY(-1px); }
+  .player-card:hover::before { background: var(--accent); }
+  .player-card.no-member { border-color: rgba(239,68,68,0.2); }
+  .player-card.no-member::before { background: var(--red); }
+
+  .rank-num {
+    font-family: 'Bebas Neue'; font-size: 28px; color: var(--muted);
+    min-width: 36px; text-align: center; line-height: 1;
+  }
+  .rank-num.top3 { color: var(--accent); }
+
+  .avatar {
+    width: 48px; height: 48px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--blue), var(--navy2));
+    border: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Bebas Neue'; font-size: 18px; color: var(--accent);
+    flex-shrink: 0;
+  }
+
+  .player-info { flex: 1; min-width: 0; }
+  .player-name { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .player-meta { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+  .player-right { text-align: right; flex-shrink: 0; }
+  .rating-num {
+    font-family: 'Bebas Neue'; font-size: 28px; color: var(--text);
+    display: flex; align-items: center; gap: 6px; justify-content: flex-end;
+  }
+  .star { color: var(--accent); font-size: 16px; }
+  .player-stats { font-size: 11px; color: var(--muted); margin-top: 2px; font-family: 'DM Mono'; }
+
+  .badge {
+    display: inline-flex; align-items: center;
+    padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600;
+    margin-left: 6px;
+  }
+  .badge.member { background: rgba(34,197,94,0.15); color: var(--green); }
+  .badge.no { background: rgba(239,68,68,0.15); color: var(--red); }
+
+  /* ─── PLAYER PROFILE ─── */
+  #profilePage { display: none; }
+  #profilePage.active { display: block; }
+
+  .profile-hero {
+    max-width: 1200px; margin: 0 auto; padding: 40px 32px;
+    display: grid; grid-template-columns: 280px 1fr; gap: 32px; align-items: start;
+  }
+
+  .profile-card {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 16px; padding: 32px 24px; text-align: center;
+  }
+  .profile-avatar {
+    width: 100px; height: 100px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--blue), var(--accent));
+    margin: 0 auto 16px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Bebas Neue'; font-size: 36px; color: white;
+    border: 3px solid var(--accent);
+  }
+  .profile-name { font-family: 'Bebas Neue'; font-size: 32px; letter-spacing: 1px; line-height: 1.1; }
+  .profile-id { font-family: 'DM Mono'; font-size: 13px; color: var(--accent); margin-top: 4px; }
+  .profile-club { font-size: 13px; color: var(--muted); margin-top: 6px; }
+
+  .profile-rating-box {
+    margin: 24px 0; padding: 20px;
+    background: var(--navy);
+    border-radius: 12px; border: 1px solid var(--border);
+  }
+  .profile-rating-box .big-rating {
+    font-family: 'Bebas Neue'; font-size: 64px; color: var(--text); line-height: 1;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .profile-rating-box .rating-label { font-size: 12px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; }
+
+  .profile-quick-stats {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px;
+  }
+  .qs { background: var(--navy); border-radius: 8px; padding: 12px;
+    font-size: 13px; color: var(--muted); }
+  .qs strong { display: block; font-family: 'Bebas Neue'; font-size: 24px; color: var(--text); }
+
+  .profile-right { }
+  .profile-tabs {
+    display: flex; gap: 4px; border-bottom: 1px solid var(--border);
+    padding-bottom: 0; margin-bottom: 24px;
+  }
+  .ptab {
+    background: none; border: none; color: var(--muted);
+    padding: 10px 20px 14px; cursor: pointer;
+    font-family: 'DM Sans'; font-size: 14px; font-weight: 500;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+    transition: all 0.2s;
+  }
+  .ptab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .ptab-content { display: none; }
+  .ptab-content.active { display: block; }
+
+  /* overview stats */
+  .overview-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px;
+  }
+  .ov-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px 20px; text-align: center;
+  }
+  .ov-card .lbl { font-size: 11px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+  .ov-card .val { font-family: 'Bebas Neue'; font-size: 36px; margin-top: 4px; }
+  .val.green { color: var(--green); }
+  .val.red { color: var(--red); }
+  .val.gold { color: var(--accent); }
+
+  /* win % circle */
+  .winpct-row { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+  .circle-wrap { position: relative; width: 80px; height: 80px; flex-shrink: 0; }
+  .circle-wrap svg { transform: rotate(-90deg); }
+  .circle-val {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Bebas Neue'; font-size: 18px; color: var(--accent);
+  }
+
+  /* tournament history */
+  .tourn-list { display: flex; flex-direction: column; gap: 10px; }
+  .tourn-item {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px 20px;
+    display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center;
+  }
+  .tourn-name { font-weight: 600; font-size: 14px; }
+  .tourn-date { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .tourn-right { text-align: right; }
+  .rating-change {
+    font-family: 'DM Mono'; font-size: 14px; font-weight: 600;
+  }
+  .rating-change.up { color: var(--green); }
+  .rating-change.dn { color: var(--red); }
+  .tourn-matches { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+  /* match list */
+  .match-list { display: flex; flex-direction: column; gap: 8px; }
+  .match-item {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 20px;
+    display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; align-items: center;
+  }
+  .match-player { }
+  .match-player .name { font-size: 13px; font-weight: 600; }
+  .match-player .rating-tag { font-size: 11px; color: var(--muted); font-family: 'DM Mono'; }
+  .match-player .pts-change { font-family: 'DM Mono'; font-size: 12px; font-weight: 700; }
+  .match-player.winner .name { color: var(--accent); }
+  .match-player.winner .pts-change { color: var(--green); }
+  .match-player.loser .pts-change { color: var(--red); }
+  .match-center { text-align: center; }
+  .match-score { font-family: 'Bebas Neue'; font-size: 18px; color: var(--text); letter-spacing: 2px; }
+  .match-date { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .match-player.right { text-align: right; }
+
+  /* ─── RATING CALCULATOR ─── */
+  .calc-wrap {
+    max-width: 800px; margin: 0 auto; padding: 0 32px 40px;
+  }
+  .upload-zone {
+    border: 2px dashed var(--border); border-radius: 16px;
+    padding: 48px; text-align: center; cursor: pointer;
+    transition: all 0.2s; margin-bottom: 32px;
+    background: var(--card);
+  }
+  .upload-zone:hover { border-color: var(--accent); background: rgba(232,184,75,0.05); }
+  .upload-icon { font-size: 48px; margin-bottom: 16px; }
+  .upload-zone h3 { font-family: 'Bebas Neue'; font-size: 24px; letter-spacing: 2px; }
+  .upload-zone p { color: var(--muted); font-size: 13px; margin-top: 8px; }
+
+  .manual-entry {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 16px; padding: 28px;
+  }
+  .manual-entry h3 { font-family: 'Bebas Neue'; font-size: 22px; letter-spacing: 2px; margin-bottom: 20px; }
+
+  .match-entry {
+    display: grid; grid-template-columns: 1fr auto 1fr auto; gap: 12px; align-items: end;
+    margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border);
+  }
+  .match-entry:last-of-type { border-bottom: none; }
+
+  .field-group label { font-size: 11px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; display: block; margin-bottom: 6px; }
+  .field-group input, .field-group select {
+    width: 100%; background: var(--navy); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px; color: var(--text);
+    font-family: 'DM Sans'; font-size: 14px; outline: none;
+    transition: border-color 0.2s;
+  }
+  .field-group input:focus, .field-group select:focus { border-color: var(--accent); }
+  .field-group select option { background: var(--navy); }
+
+  .vs-badge {
+    font-family: 'Bebas Neue'; font-size: 18px; color: var(--muted);
+    padding-bottom: 10px; letter-spacing: 2px;
+  }
+  .winner-select { align-self: end; }
+  .winner-select select { background: var(--navy); }
+
+  .calc-result {
+    margin-top: 20px; padding: 20px 24px;
+    background: rgba(232,184,75,0.08); border: 1px solid rgba(232,184,75,0.3);
+    border-radius: 12px; display: none;
+  }
+  .calc-result.show { display: block; }
+  .calc-result h4 { font-family: 'Bebas Neue'; font-size: 20px; letter-spacing: 2px; color: var(--accent); margin-bottom: 12px; }
+  .result-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 0; border-bottom: 1px solid var(--border);
+  }
+  .result-row:last-child { border-bottom: none; }
+  .result-player { font-size: 14px; }
+  .result-pts { font-family: 'DM Mono'; font-size: 16px; font-weight: 700; }
+  .result-pts.gain { color: var(--green); }
+  .result-pts.loss { color: var(--red); }
+
+  .btn-primary {
+    background: var(--accent); color: var(--navy);
+    border: none; border-radius: 10px; padding: 12px 28px;
+    font-family: 'DM Sans'; font-size: 15px; font-weight: 700;
+    cursor: pointer; transition: all 0.2s; margin-top: 16px;
+  }
+  .btn-primary:hover { background: var(--accent2); transform: translateY(-1px); }
+  .btn-secondary {
+    background: var(--card2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 10px; padding: 12px 28px;
+    font-family: 'DM Sans'; font-size: 15px; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; margin-top: 16px; margin-left: 8px;
+  }
+  .btn-secondary:hover { border-color: var(--accent); }
+
+  /* ─── MEMBRESÍA ─── */
+  .memb-grid {
+    max-width: 1200px; margin: 0 auto; padding: 0 32px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .memb-item {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px 20px;
+    display: grid; grid-template-columns: auto 1fr auto auto; gap: 20px; align-items: center;
+  }
+  .memb-avatar {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: var(--blue);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Bebas Neue'; font-size: 16px; color: var(--accent);
+  }
+  .memb-name { font-weight: 600; font-size: 14px; }
+  .memb-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .memb-date { font-family: 'DM Mono'; font-size: 13px; color: var(--muted); text-align: right; }
+  .memb-date .date { font-size: 12px; }
+  .status-pill {
+    padding: 4px 12px; border-radius: 99px; font-size: 12px; font-weight: 700;
+    white-space: nowrap;
+  }
+  .status-pill.active { background: rgba(34,197,94,0.15); color: var(--green); }
+  .status-pill.warning { background: rgba(249,115,22,0.15); color: var(--orange); }
+  .status-pill.expired { background: rgba(239,68,68,0.15); color: var(--red); }
+
+  .alert-banner {
+    max-width: 1200px; margin: 0 auto 24px;
+    padding: 0 32px;
+  }
+  .alert-box {
+    background: rgba(249,115,22,0.1); border: 1px solid rgba(249,115,22,0.3);
+    border-radius: 12px; padding: 14px 20px;
+    display: flex; align-items: center; gap: 12px;
+    font-size: 14px;
+  }
+  .alert-box .icon { font-size: 20px; }
+  .alert-box strong { color: var(--orange); }
+
+  /* ─── BACK BUTTON ─── */
+  .back-btn {
+    background: none; border: none; color: var(--muted);
+    cursor: pointer; font-family: 'DM Sans'; font-size: 14px;
+    display: flex; align-items: center; gap: 8px;
+    padding: 0; margin-bottom: 8px; transition: color 0.2s;
+  }
+  .back-btn:hover { color: var(--text); }
+
+  /* ─── RESPONSIVE ─── */
+  @media (max-width: 768px) {
+    .player-grid { grid-template-columns: 1fr; }
+    .stats-row { grid-template-columns: repeat(2, 1fr); }
+    .profile-hero { grid-template-columns: 1fr; }
+    .overview-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  /* ─── TABLE ─── */
+  .table-wrap { max-width: 1200px; margin: 0 auto; padding: 0 32px 40px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    padding: 10px 16px; text-align: left;
+    font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--muted); border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: 14px 16px; font-size: 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  tr:hover td { background: var(--card); }
+  tr td:first-child { font-family: 'Bebas Neue'; font-size: 20px; color: var(--muted); }
+
+  .scrollhint { text-align: center; color: var(--muted); font-size: 13px; margin: 24px 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-badge">TM</div>
+    <div class="logo-text">
+      <strong>FPRTM</strong><br>
+      <span>SISTEMA DE RATINGS</span>
+    </div>
+  </div>
+  <nav>
+    <button class="active" onclick="showPage('rankings')">🏆 Rankings</button>
+    <button onclick="showPage('calculator')">⚡ Calcular Rating</button>
+    <button onclick="showPage('membresia')">🪪 Membresía</button>
+    <button class="admin-btn" onclick="showPage('admin')">⚙ Admin</button>
+  </nav>
+</header>
+
+<!-- ══════════════════════════════════════════
+     PAGE: RANKINGS
+═══════════════════════════════════════════ -->
+<div id="rankingsPage" class="page active">
+  <div class="page-hero">
+    <div class="overline">Federación Puertorriqueña de Tenis de Mesa</div>
+    <h1>RANKINGS 2026</h1>
+    <p>Clasificación nacional actualizada · Temporada activa</p>
+  </div>
+
+  <div class="search-wrap">
+    <div class="search-box">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="searchInput" placeholder="Buscar jugador por nombre..." oninput="filterPlayers()">
+    </div>
+  </div>
+
+  <div class="filters">
+    <div class="filter-chip on" onclick="setFilter(this,'all')">Todos</div>
+    <div class="filter-chip" onclick="setFilter(this,'Masculino')">♂ Masculino</div>
+    <div class="filter-chip" onclick="setFilter(this,'Femenino')">♀ Femenino</div>
+    <div class="filter-chip" onclick="setFilter(this,'Juv21U')">Sub-21</div>
+    <div class="filter-chip" onclick="setFilter(this,'Juv21')">Juvenil</div>
+    <div class="filter-chip" onclick="setFilter(this,'Abierto')">Abierto</div>
+    <div class="filter-chip" onclick="setFilter(this,'member')">✅ Solo Miembros</div>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-card gold">
+      <div class="label">Top Rating</div>
+      <div class="value" id="statTopRating">—</div>
+      <div class="sub" id="statTopName">Cargando...</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Jugadores Activos</div>
+      <div class="value" id="statTotal">—</div>
+      <div class="sub">En el sistema</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Miembros 2026</div>
+      <div class="value" id="statMembers">—</div>
+      <div class="sub">Registrados</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Actualizado</div>
+      <div class="value" style="font-size:24px;margin-top:6px">Feb 2026</div>
+      <div class="sub">En vivo · Supabase</div>
+    </div>
+  </div>
+
+  <div class="player-grid" id="playerGrid"></div>
+  <p class="scrollhint" id="loadMore" onclick="loadMorePlayers()" style="cursor:pointer;margin-top:20px;">
+    ↓ Ver más jugadores
+  </p>
+</div>
+
+<!-- ══════════════════════════════════════════
+     PAGE: PLAYER PROFILE
+═══════════════════════════════════════════ -->
+<div id="profilePage" class="page">
+  <div class="container" style="padding-bottom:0">
+    <button class="back-btn" onclick="backToRankings()">← Volver a Rankings</button>
+  </div>
+
+  <div class="profile-hero">
+    <div class="profile-card">
+      <div class="profile-avatar" id="profileAvatar">JM</div>
+      <div class="profile-name" id="profileName">Jerall Montijo</div>
+      <div class="profile-id" id="profileId">ATH# —</div>
+      <div class="profile-club" id="profileClub">Naguabo</div>
+      <span id="profileBadge" class="badge member">✓ Miembro</span>
+
+      <div class="profile-rating-box">
+        <div class="rating-label">RATING FPRTM</div>
+        <div class="big-rating">
+          <span style="color:var(--accent);font-size:32px">★</span>
+          <span id="profileRating">2132</span>
+        </div>
+        <div class="rating-label" style="margin-top:4px" id="profileCategory">Juv21U · Masculino · 20 años</div>
+      </div>
+
+      <div class="profile-quick-stats">
+        <div class="qs"><strong id="pMatches">—</strong>Partidos</div>
+        <div class="qs"><strong id="pWins" style="color:var(--green)">—</strong>Victorias</div>
+        <div class="qs"><strong id="pLosses" style="color:var(--red)">—</strong>Derrotas</div>
+        <div class="qs"><strong id="pPct" style="color:var(--accent)">—</strong>Win %</div>
+      </div>
+    </div>
+
+    <div class="profile-right">
+      <div class="profile-tabs">
+        <button class="ptab active" onclick="showPTab(this,'overview')">📊 Overview</button>
+        <button class="ptab" onclick="showPTab(this,'torneos')">🏓 Torneos</button>
+        <button class="ptab" onclick="showPTab(this,'partidos')">⚡ Partidos</button>
+      </div>
+
+      <!-- OVERVIEW TAB -->
+      <div class="ptab-content active" id="tab-overview">
+        <div class="overview-grid">
+          <div class="ov-card">
+            <div class="lbl">Ranking Nacional</div>
+            <div class="val gold" id="ovRank">#2</div>
+          </div>
+          <div class="ov-card">
+            <div class="lbl">Torneos 2026</div>
+            <div class="val" id="ovTourneys">3</div>
+          </div>
+          <div class="ov-card">
+            <div class="lbl">Pts Ganados YTD</div>
+            <div class="val green" id="ovPtsYTD">+82</div>
+          </div>
+        </div>
+
+        <div class="winpct-row">
+          <div class="circle-wrap">
+            <svg width="80" height="80" viewBox="0 0 80 80">
+              <circle cx="40" cy="40" r="34" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="8"/>
+              <circle cx="40" cy="40" r="34" fill="none" stroke="#e8b84b" stroke-width="8"
+                stroke-dasharray="213.6" id="winCircle" stroke-dashoffset="64" stroke-linecap="round"/>
+            </svg>
+            <div class="circle-val" id="winPct">70%</div>
+          </div>
+          <div>
+            <div style="font-size:15px;font-weight:600">Porcentaje de victorias (2026)</div>
+            <div style="font-size:13px;color:var(--muted);margin-top:4px">Basado en torneos registrados este año</div>
+          </div>
+        </div>
+
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;">
+          <div style="font-size:12px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:12px;">Historial de Rating</div>
+          <div style="display:flex;align-items:end;gap:6px;height:60px;">
+            <!-- mini bar chart -->
+            <div style="flex:1;background:var(--blue);border-radius:4px 4px 0 0;height:45%;position:relative">
+              <div style="position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);font-size:10px;color:var(--muted);white-space:nowrap">Ene</div>
+            </div>
+            <div style="flex:1;background:var(--blue);border-radius:4px 4px 0 0;height:60%"></div>
+            <div style="flex:1;background:var(--accent);border-radius:4px 4px 0 0;height:100%">
+              <div style="position:absolute;bottom:-18px;font-size:10px;color:var(--muted)"></div>
+            </div>
+            <div style="flex:1;background:var(--blue);border-radius:4px 4px 0 0;height:80%"></div>
+            <div style="flex:1;background:var(--blue);border-radius:4px 4px 0 0;height:90%"></div>
+          </div>
+          <div style="margin-top:24px;display:flex;justify-content:space-between;font-size:11px;color:var(--muted);">
+            <span>Rating Inicial 2026: <strong style="color:var(--text)" id="startRating">—</strong></span>
+            <span>Rating Actual: <strong style="color:var(--accent)" id="currentRating">—</strong></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- TORNEOS TAB -->
+      <div class="ptab-content" id="tab-torneos">
+        <div class="tourn-list" id="tournList"></div>
+      </div>
+
+      <!-- PARTIDOS TAB -->
+      <div class="ptab-content" id="tab-partidos">
+        <div class="match-list" id="matchList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     PAGE: CALCULADORA DE RATING
+═══════════════════════════════════════════ -->
+<div id="calculatorPage" class="page">
+  <div class="page-hero">
+    <div class="overline">Herramienta</div>
+    <h1>CALCULAR RATING</h1>
+    <p>Sube foto de resultados o ingresa partidos manualmente</p>
+  </div>
+
+  <div class="calc-wrap">
+    <div class="upload-zone" onclick="document.getElementById('imgUpload').click()">
+      <input type="file" id="imgUpload" accept="image/*" style="display:none" onchange="handleImageUpload(event)">
+      <div class="upload-icon">📸</div>
+      <h3>SUBE FOTO DE RESULTADOS</h3>
+      <p>Foto de grupos, llaves o tabla de resultados<br>El sistema leerá los resultados automáticamente</p>
+      <button class="btn-primary" style="margin-top:16px;pointer-events:none">Seleccionar imagen</button>
+    </div>
+
+    <div class="manual-entry">
+      <h3>ENTRADA MANUAL DE PARTIDOS</h3>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:20px">Nombre del torneo: <input id="tournName" style="background:var(--navy);border:1px solid var(--border);border-radius:6px;padding:4px 10px;color:var(--text);font-family:DM Sans;font-size:13px;outline:none" placeholder="Ej: Clasif. Febrero 2026"></p>
+
+      <div id="matchEntries">
+        <!-- Match row template populated by JS -->
+      </div>
+
+      <button class="btn-secondary" onclick="addMatchRow()" style="margin-top:0">+ Agregar partido</button>
+      <br>
+      <button class="btn-primary" onclick="calculateRatings()">⚡ Calcular Nuevos Ratings</button>
+
+      <div class="calc-result" id="calcResult">
+        <h4>RESULTADOS DEL CÁLCULO</h4>
+        <div id="calcResultBody"></div>
+        <button class="btn-primary" style="margin-top:16px" onclick="applyRatings()">✓ Aplicar a Base de Datos</button>
+        <button class="btn-secondary" onclick="document.getElementById('calcResult').classList.remove('show')">Descartar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     PAGE: MEMBRESÍA
+═══════════════════════════════════════════ -->
+<div id="membresia_page" class="page">
+  <div class="page-hero">
+    <div class="overline">Gestión</div>
+    <h1>MEMBRESÍA 2026</h1>
+    <p>Control de miembros activos, vencidos y alertas</p>
+  </div>
+
+  <div class="alert-banner">
+    <div class="alert-box">
+      <span class="icon">⚠️</span>
+      <div>
+        <strong>3 membresías próximas a vencer</strong> en los próximos 30 días.
+        <span style="color:var(--muted)"> · 406 jugadores sin membresía activa.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-card gold">
+      <div class="label">Miembros Activos</div>
+      <div class="value">145</div>
+      <div class="sub">Temporada 2026</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Sin Membresía</div>
+      <div class="value" style="color:var(--red)">406</div>
+      <div class="sub">En ranking pero no miembros</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Nuevos (Feb)</div>
+      <div class="value" style="color:var(--green)">38</div>
+      <div class="sub">Registrados este mes</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Por Vencer</div>
+      <div class="value" style="color:var(--orange)">3</div>
+      <div class="sub">Próximos 30 días</div>
+    </div>
+  </div>
+
+  <div class="filters" style="margin-bottom:16px">
+    <div class="filter-chip on" onclick="setMembFilter(this,'all')">Todos</div>
+    <div class="filter-chip" onclick="setMembFilter(this,'active')">✅ Activos</div>
+    <div class="filter-chip" onclick="setMembFilter(this,'warning')">⚠️ Por Vencer</div>
+    <div class="filter-chip" onclick="setMembFilter(this,'no')">❌ Sin Membresía</div>
+  </div>
+
+  <div class="memb-grid" id="membGrid"></div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     PAGE: ADMIN
+═══════════════════════════════════════════ -->
+<div id="adminPage" class="page">
+  <div class="page-hero">
+    <div class="overline">Panel Administrativo</div>
+    <h1>ADMIN FPRTM</h1>
+    <p>Gestión de base de datos, torneos y configuración</p>
+  </div>
+  <div class="container">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+      <div style="background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:24px;cursor:pointer" onclick="showPage('calculator')">
+        <div style="font-size:32px;margin-bottom:12px">📸</div>
+        <div style="font-family:'Bebas Neue';font-size:20px;letter-spacing:2px">Subir Resultados</div>
+        <div style="color:var(--muted);font-size:13px;margin-top:6px">Foto de torneo → calcular y aplicar ratings</div>
+      </div>
+      <div style="background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:24px;cursor:pointer">
+        <div style="font-size:32px;margin-bottom:12px">📊</div>
+        <div style="font-family:'Bebas Neue';font-size:20px;letter-spacing:2px">Exportar Rankings</div>
+        <div style="color:var(--muted);font-size:13px;margin-top:6px">Descargar Excel actualizado</div>
+      </div>
+      <div style="background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:24px;cursor:pointer" onclick="showPage('membresia')">
+        <div style="font-size:32px;margin-bottom:12px">🪪</div>
+        <div style="font-family:'Bebas Neue';font-size:20px;letter-spacing:2px">Gestionar Membresías</div>
+        <div style="color:var(--muted);font-size:13px;margin-top:6px">Activar, vencer, alertas</div>
+      </div>
+      <div style="background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:24px;cursor:pointer">
+        <div style="font-size:32px;margin-bottom:12px">➕</div>
+        <div style="font-family:'Bebas Neue';font-size:20px;letter-spacing:2px">Nuevo Jugador</div>
+        <div style="color:var(--muted);font-size:13px;margin-top:6px">Registrar jugador en el sistema</div>
+      </div>
+      <div style="background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:24px;cursor:pointer">
+        <div style="font-size:32px;margin-bottom:12px">🏓</div>
+        <div style="font-family:'Bebas Neue';font-size:20px;letter-spacing:2px">Crear Torneo</div>
+        <div style="color:var(--muted);font-size:13px;margin-top:6px">Nuevo evento en calendario</div>
+      </div>
+      <div style="background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:24px;cursor:pointer">
+        <div style="font-size:32px;margin-bottom:12px">⚙</div>
+        <div style="font-family:'Bebas Neue';font-size:20px;letter-spacing:2px">Configuración</div>
+        <div style="color:var(--muted);font-size:13px;margin-top:6px">Tabla de puntos, categorías</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════
+// SUPABASE CONFIG
+// ══════════════════════════════════════════
+const SUPABASE_URL = 'https://qrvyfdpwtearfpjruwja.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_mM59efPqpcgrR3g3_6F_Ww_h1jg4PyV';
+
+async function supabase(table, params = '') {
+  const url = `${SUPABASE_URL}/rest/v1/${table}${params}`;
+  const res = await fetch(url, {
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json'
+    }
+  });
+  if (!res.ok) throw new Error(`Supabase error: ${res.status}`);
+  return res.json();
+}
+
+async function supabasePost(table, body) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error(`Supabase error: ${res.status}`);
+  return res.json();
+}
+
+async function supabasePatch(table, id, body) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error(`Supabase error: ${res.status}`);
+}
+
+// ══════════════════════════════════════════
+// DATA (live from Supabase)
+// ══════════════════════════════════════════
+let PLAYERS = [];
+let MEMBERS = [];
+let DB_STATS = { total: 0, members: 0, topRating: 0, topName: '' };
+
+function showLoading(show) {
+  let el = document.getElementById('loadingOverlay');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'loadingOverlay';
+    el.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,0.85);z-index:999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px';
+    el.innerHTML = '<div style="width:48px;height:48px;border:3px solid rgba(232,184,75,0.2);border-top-color:#e8b84b;border-radius:50%;animation:spin 0.8s linear infinite"></div><div style="font-family:Bebas Neue;font-size:20px;letter-spacing:3px;color:#e8b84b">CARGANDO...</div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>';
+    document.body.appendChild(el);
+  }
+  el.style.display = show ? 'flex' : 'none';
+}
+
+async function loadPlayers(filter = {}) {
+  let params = '?order=rating_actual.desc&limit=500';
+  if (filter.sexo)      params += `&sexo=eq.${encodeURIComponent(filter.sexo)}`;
+  if (filter.categoria) params += `&categoria=eq.${encodeURIComponent(filter.categoria)}`;
+  if (filter.member)    params += `&membresia_status=eq.Miembro`;
+  if (filter.search)    params += `&nombre_completo=ilike.*${encodeURIComponent(filter.search)}*`;
+
+  const data = await supabase('jugadores', params);
+  return data.map((p, i) => ({
+    id: p.id,
+    rank: i + 1,
+    name: p.nombre_completo,
+    sex: p.sexo,
+    age: p.edad,
+    cat: p.categoria,
+    club: p.club,
+    member: p.membresia_status === 'Miembro',
+    rating: p.rating_actual,
+    ratingStart: p.rating_inicio_2025
+  }));
+}
+
+async function loadMembers() {
+  const data = await supabase('miembros', '?order=fecha_membresia.desc&limit=200&temporada=eq.2026');
+  return data.map(m => {
+    const fecha = m.fecha_membresia ? new Date(m.fecha_membresia) : null;
+    const diasDesde = fecha ? Math.floor((Date.now() - fecha) / 86400000) : 999;
+    let status = 'active';
+    if (diasDesde > 365) status = 'expired';
+    else if (diasDesde > 335) status = 'warning';
+    return {
+      id: m.id,
+      name: m.nombre_completo,
+      club: m.club,
+      sex: m.sexo,
+      age: m.edad,
+      date: m.fecha_membresia ? m.fecha_membresia.split('T')[0] : '—',
+      status,
+      email: m.email,
+      tel: m.telefono,
+      pueblo: m.pueblo
+    };
+  });
+}
+
+async function loadStats() {
+  const [total, members] = await Promise.all([
+    supabase('jugadores', '?select=count', '').catch(() => [{count: 0}]),
+    supabase('miembros', '?select=count&temporada=eq.2026').catch(() => [{count: 0}])
+  ]);
+
+  // Top player
+  const top = PLAYERS[0] || {};
+  document.getElementById('statTopRating').textContent  = top.rating || '—';
+  document.getElementById('statTopName').textContent    = top.name ? top.name.split(' ').slice(0,2).join(' ') : '—';
+  document.getElementById('statTotal').textContent      = PLAYERS.length;
+  document.getElementById('statMembers').textContent    = MEMBERS.length;
+}
+
+// ══════════════════════════════════════════
+// NAV
+// ══════════════════════════════════════════
+const pages = {
+  rankings: 'rankingsPage',
+  calculator: 'calculatorPage',
+  membresia: 'membresia_page',
+  admin: 'adminPage',
+  profile: 'profilePage'
+};
+
+function showPage(key) {
+  Object.values(pages).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.classList.remove('active'); el.style.display='none'; }
+  });
+  const target = document.getElementById(pages[key]);
+  if (target) { target.style.display='block'; setTimeout(()=>target.classList.add('active'),10); }
+
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  const navMap = {rankings:0, calculator:1, membresia:2, admin:3};
+  if (navMap[key] !== undefined) document.querySelectorAll('nav button')[navMap[key]].classList.add('active');
+}
+
+// ══════════════════════════════════════════
+// RANKINGS PAGE
+// ══════════════════════════════════════════
+let currentFilter = 'all';
+let displayedCount = 0;
+const PAGE_SIZE = 12;
+
+function initials(name) {
+  return name.split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
+}
+
+function renderPlayers(list, append=false) {
+  const grid = document.getElementById('playerGrid');
+  if (!append) grid.innerHTML = '';
+  list.forEach(p => {
+    const card = document.createElement('div');
+    card.className = 'player-card' + (!p.member ? ' no-member' : '');
+    card.onclick = () => showProfile(p);
+    card.innerHTML = `
+      <div class="rank-num ${p.rank<=3?'top3'}#${p.rank}">#${p.rank}</div>
+      <div class="avatar">${initials(p.name)}</div>
+      <div class="player-info">
+        <div class="player-name">${p.name}
+          <span class="badge ${p.member?'member':'no'}">${p.member?'✓ Miembro':'✗ No Miembro'}</span>
+        </div>
+        <div class="player-meta">${p.cat||'—'} · ${p.club||'Sin club'} · ${p.sex||'—'}</div>
+      </div>
+      <div class="player-right">
+        <div class="rating-num"><span class="star">★</span>${p.rating}</div>
+        <div class="player-stats">${p.age ? p.age+' años' : '—'}</div>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+function loadMorePlayers() {
+  const next = PLAYERS.slice(displayedCount, displayedCount + PAGE_SIZE);
+  renderPlayers(next, true);
+  displayedCount += PAGE_SIZE;
+  if (displayedCount >= PLAYERS.length) document.getElementById('loadMore').style.display='none';
+}
+
+// ══════════════════════════════════════════
+// PLAYER PROFILE
+// ══════════════════════════════════════════
+const MOCK_TOURNAMENTS = [
+  {name:"Clasificatorio Febrero 2026", date:"Feb 15, 2026", ratingBefore:2050, ratingAfter:2132, won:8, lost:2},
+  {name:"Copa Navidad 2025", date:"Dic 20, 2025", ratingBefore:1998, ratingAfter:2050, won:6, lost:1},
+  {name:"Albergue Olímpico Open 2025", date:"Nov 5, 2025", ratingBefore:1960, ratingAfter:1998, won:5, lost:3},
+];
+
+const MOCK_MATCHES = [
+  {opp:"Jabdiel Torres", oppRating:2174, result:"11-8, 11-5, 11-7", won:false, myPts:-3, myBefore:2132},
+  {opp:"Enrique Rios Torres", oppRating:2101, result:"11-9, 9-11, 11-7, 11-6", won:true, myPts:+8, myBefore:2050},
+  {opp:"Yadier López Velez", oppRating:2041, result:"11-6, 11-4, 11-8", won:true, myPts:+8, myBefore:2042},
+  {opp:"Ryan Cuadro Pérez", oppRating:2006, result:"9-11, 11-7, 8-11, 11-9, 11-6", won:true, myPts:+7, myBefore:2034},
+  {opp:"Dereck Valentín", oppRating:2012, result:"11-8, 11-9, 11-3", won:true, myPts:+8, myBefore:2027},
+];
+
+function showProfile(player) {
+  // Fill profile
+  document.getElementById('profileAvatar').textContent = initials(player.name);
+  document.getElementById('profileName').textContent = player.name;
+  document.getElementById('profileId').textContent = 'FPRTM #' + String(player.rank).padStart(4,'0');
+  document.getElementById('profileClub').textContent = player.club || 'Sin club';
+  document.getElementById('profileBadge').textContent = player.member ? '✓ Miembro' : '✗ No Miembro';
+  document.getElementById('profileBadge').className = 'badge ' + (player.member ? 'member' : 'no');
+  document.getElementById('profileRating').textContent = player.rating;
+  document.getElementById('profileCategory').textContent = [player.cat, player.sex, player.age ? player.age+' años':''].filter(Boolean).join(' · ');
+  document.getElementById('ovRank').textContent = '#' + player.rank;
+
+  // Mock stats
+  const matches = 18 + player.rank;
+  const wins = Math.floor(matches * 0.72);
+  const losses = matches - wins;
+  const pct = Math.round(wins/matches*100);
+
+  document.getElementById('pMatches').textContent = matches;
+  document.getElementById('pWins').textContent = wins;
+  document.getElementById('pLosses').textContent = losses;
+  document.getElementById('pPct').textContent = pct + '%';
+  document.getElementById('winPct').textContent = pct + '%';
+  document.getElementById('winCircle').style.strokeDashoffset = 213.6 * (1 - pct/100);
+  document.getElementById('startRating').textContent = player.rating - 132;
+  document.getElementById('currentRating').textContent = player.rating;
+  document.getElementById('ovPtsYTD').textContent = '+' + 132;
+
+  // Tournaments
+  const tl = document.getElementById('tournList');
+  tl.innerHTML = MOCK_TOURNAMENTS.map(t => {
+    const diff = t.ratingAfter - t.ratingBefore;
+    return `<div class="tourn-item">
+      <div>
+        <div class="tourn-name">${t.name}</div>
+        <div class="tourn-date">${t.date}</div>
+        <div class="tourn-matches" style="margin-top:6px">
+          <span style="color:var(--green)">✓ ${t.won} ganados</span> &nbsp;
+          <span style="color:var(--red)">✗ ${t.lost} perdidos</span>
+        </div>
+      </div>
+      <div class="tourn-right">
+        <div class="rating-change ${diff>=0?'up':'dn'}">${diff>=0?'+':''}${diff} pts</div>
+        <div class="tourn-matches">${t.ratingBefore} → ${t.ratingAfter}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Matches
+  const ml = document.getElementById('matchList');
+  ml.innerHTML = MOCK_MATCHES.map(m => {
+    const fav = m.myBefore > m.oppRating;
+    return `<div class="match-item">
+      <div class="match-player ${m.won?'winner':'loser'}">
+        <div class="name">${m.won?'👑 ':''} ${player.name.split(' ')[0]}</div>
+        <div class="rating-tag">★ ${m.myBefore}</div>
+        <div class="pts-change">${m.myPts>=0?'+':''}${m.myPts} pts</div>
+      </div>
+      <div class="match-center">
+        <div class="match-score">VS</div>
+        <div class="match-date" style="font-size:10px">${m.result}</div>
+      </div>
+      <div class="match-player ${!m.won?'winner':'loser'} right">
+        <div class="name">${!m.won?'👑 ':''} ${m.opp.split(' ')[0]}</div>
+        <div class="rating-tag">★ ${m.oppRating}</div>
+        <div class="pts-change">${m.won ? '-'+Math.abs(m.myPts) : '+'+Math.abs(m.myPts)} pts</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  showPage('profile');
+  document.getElementById('tab-overview').classList.add('active');
+}
+
+function backToRankings() {
+  showPage('rankings');
+}
+
+function showPTab(btn, tabId) {
+  document.querySelectorAll('.ptab').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.ptab-content').forEach(c=>c.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-'+tabId).classList.add('active');
+}
+
+// ══════════════════════════════════════════
+// RATING CALCULATOR
+// ══════════════════════════════════════════
+const POINT_TABLE = [
+  {maxDiff:24, fav:8, underdog:8},
+  {maxDiff:49, fav:7, underdog:10},
+  {maxDiff:99, fav:5, underdog:12},
+  {maxDiff:149, fav:3, underdog:15},
+  {maxDiff:199, fav:2, underdog:20},
+  {maxDiff:249, fav:1, underdog:26},
+  {maxDiff:Infinity, fav:0, underdog:32},
+];
+
+function getPoints(rA, rB, winnerIsA) {
+  const diff = Math.abs(rA - rB);
+  const row = POINT_TABLE.find(r => diff <= r.maxDiff);
+  const aIsFav = rA >= rB;
+  if (winnerIsA) {
+    return { aGain: aIsFav ? row.fav : row.underdog, bGain: -(aIsFav ? row.fav : row.underdog) };
+  } else {
+    return { aGain: -(aIsFav ? row.underdog : row.fav), bGain: aIsFav ? row.underdog : row.fav };
+  }
+}
+
+let matchRows = 0;
+function addMatchRow() {
+  matchRows++;
+  const id = matchRows;
+  const div = document.createElement('div');
+  div.className = 'match-entry';
+  div.id = 'mrow'+id;
+  div.innerHTML = `
+    <div class="field-group">
+      <label>Jugador A</label>
+      <input type="text" id="pA${id}" placeholder="Nombre" list="playerList">
+    </div>
+    <div class="field-group" style="min-width:80px">
+      <label>Rating A</label>
+      <input type="number" id="rA${id}" placeholder="1800">
+    </div>
+    <div class="vs-badge">VS</div>
+    <div class="field-group">
+      <label>Jugador B</label>
+      <input type="text" id="pB${id}" placeholder="Nombre" list="playerList">
+    </div>
+    <div class="field-group" style="min-width:80px">
+      <label>Rating B</label>
+      <input type="number" id="rB${id}" placeholder="1750">
+    </div>
+    <div class="field-group winner-select" style="min-width:120px">
+      <label>Ganador</label>
+      <select id="win${id}">
+        <option value="A">A ganó</option>
+        <option value="B">B ganó</option>
+      </select>
+    </div>
+  `;
+  document.getElementById('matchEntries').appendChild(div);
+}
+
+// Build datalist for autocomplete
+function buildDatalist() {
+  const dl = document.createElement('datalist');
+  dl.id = 'playerList';
+  PLAYERS.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.name;
+    dl.appendChild(opt);
+  });
+  document.body.appendChild(dl);
+}
+
+function calculateRatings() {
+  const results = [];
+  for (let i=1; i<=matchRows; i++) {
+    const pA = document.getElementById('pA'+i)?.value;
+    const pB = document.getElementById('pB'+i)?.value;
+    const rA = parseInt(document.getElementById('rA'+i)?.value);
+    const rB = parseInt(document.getElementById('rB'+i)?.value);
+    const win = document.getElementById('win'+i)?.value;
+    if (!pA || !pB || isNaN(rA) || isNaN(rB)) continue;
+    const {aGain, bGain} = getPoints(rA, rB, win==='A');
+    results.push({pA, pB, rA, rB, aGain, bGain, winner: win==='A' ? pA : pB});
+  }
+  if (!results.length) { alert('Ingresa al menos un partido completo.'); return; }
+
+  const body = document.getElementById('calcResultBody');
+  body.innerHTML = results.map(r => `
+    <div class="result-row">
+      <div class="result-player">
+        ${r.winner===r.pA ? '👑 ' : ''}<strong>${r.pA}</strong> (${r.rA} → ${r.rA+r.aGain})
+      </div>
+      <div class="result-pts ${r.aGain>=0?'gain':'loss'}">${r.aGain>=0?'+':''}${r.aGain}</div>
+    </div>
+    <div class="result-row">
+      <div class="result-player">
+        ${r.winner===r.pB ? '👑 ' : ''}<strong>${r.pB}</strong> (${r.rB} → ${r.rB+r.bGain})
+      </div>
+      <div class="result-pts ${r.bGain>=0?'gain':'loss'}">${r.bGain>=0?'+':''}${r.bGain}</div>
+    </div>
+  `).join('<hr style="border-color:var(--border);margin:4px 0">');
+
+  document.getElementById('calcResult').classList.add('show');
+}
+
+function applyRatings() {
+  alert('✅ Ratings aplicados a la base de datos.\n\n(En producción, esto actualizaría el servidor.)');
+  document.getElementById('calcResult').classList.remove('show');
+}
+
+function handleImageUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  alert('📸 Imagen recibida: ' + file.name + '\n\nEn producción, OCR leerá los resultados automáticamente y completará los partidos.\n\nTecnología: Google Vision API o Tesseract.js');
+}
+
+// ══════════════════════════════════════════
+// MEMBRESÍA
+// ══════════════════════════════════════════
+let membFilter = 'all';
+function renderMembers() {
+  const filtered = MEMBERS.filter(m => {
+    if (membFilter === 'active') return m.status === 'active';
+    if (membFilter === 'warning') return m.status === 'warning';
+    if (membFilter === 'no') return m.status === 'expired';
+    return true;
+  });
+  const grid = document.getElementById('membGrid');
+  grid.innerHTML = filtered.map(m => {
+    const labels = {active:'✅ Activo', warning:'⚠️ Por Vencer', expired:'❌ Expirado'};
+    const cls = m.status;
+    return `<div class="memb-item">
+      <div class="memb-avatar">${initials(m.name)}</div>
+      <div>
+        <div class="memb-name">${m.name}</div>
+        <div class="memb-meta">${m.club} · ${m.sex} · ${m.age} años</div>
+      </div>
+      <div class="memb-date">
+        <div style="font-size:11px;color:var(--muted)">Desde</div>
+        <div class="date">${m.date}</div>
+      </div>
+      <div class="status-pill ${cls}">${labels[m.status]}</div>
+    </div>`;
+  }).join('');
+
+  // Add non-members from player list
+  if (membFilter === 'all' || membFilter === 'no') {
+    const noMembers = PLAYERS.filter(p => !p.member).slice(0,8);
+    noMembers.forEach(p => {
+      const div = document.createElement('div');
+      div.className = 'memb-item';
+      div.style.opacity = '0.6';
+      div.innerHTML = `
+        <div class="memb-avatar" style="background:rgba(239,68,68,0.2);color:var(--red)">${initials(p.name)}</div>
+        <div>
+          <div class="memb-name">${p.name}</div>
+          <div class="memb-meta">${p.club||'Sin club'} · Rating ${p.rating}</div>
+        </div>
+        <div class="memb-date"><div style="font-size:11px;color:var(--muted)">Nunca registrado</div></div>
+        <div class="status-pill expired">❌ No Miembro</div>
+      `;
+      grid.appendChild(div);
+    });
+  }
+}
+
+function setMembFilter(el, val) {
+  document.querySelectorAll('#membresia_page .filter-chip').forEach(c=>c.classList.remove('on'));
+  el.classList.add('on');
+  membFilter = val;
+  renderMembers();
+}
+
+// ══════════════════════════════════════════
+// FILTER — async override
+// ══════════════════════════════════════════
+let searchTimeout = null;
+
+async function filterPlayers() {
+  const q = document.getElementById('searchInput').value.trim();
+  const filter = {};
+  if (currentFilter === 'Masculino')  filter.sexo = 'Masculino';
+  else if (currentFilter === 'Femenino')  filter.sexo = 'Femenino';
+  else if (currentFilter === 'Juv21U')    filter.categoria = 'Juv21U';
+  else if (currentFilter === 'Juv21')     filter.categoria = 'Juv21';
+  else if (currentFilter === 'Abierto')   filter.categoria = 'Abierto';
+  else if (currentFilter === 'member')    filter.member = true;
+  if (q.length >= 2) filter.search = q;
+
+  try {
+    PLAYERS = await loadPlayers(filter);
+    displayedCount = PAGE_SIZE;
+    renderPlayers(PLAYERS.slice(0, displayedCount));
+    const lm = document.getElementById('loadMore');
+    if (lm) lm.style.display = PLAYERS.length > displayedCount ? '' : 'none';
+    await loadStats();
+  } catch(e) {
+    console.error(e);
+    document.getElementById('playerGrid').innerHTML =
+      '<p style="color:var(--red);padding:20px;grid-column:1/-1">Error conectando a Supabase.</p>';
+  }
+}
+
+function setFilter(el, val) {
+  document.querySelectorAll('#rankingsPage .filter-chip').forEach(c => c.classList.remove('on'));
+  el.classList.add('on');
+  currentFilter = val;
+  filterPlayers();
+}
+
+// ══════════════════════════════════════════
+// INIT — async
+// ══════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', async () => {
+  Object.values(pages).forEach(id => {
+    const el = document.getElementById(id);
+    if (el && id !== 'rankingsPage') el.style.display = 'none';
+  });
+
+  // Hook search debounce
+  const searchInput = document.getElementById('searchInput');
+  if (searchInput) {
+    searchInput.oninput = () => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(filterPlayers, 350);
+    };
+  }
+
+  showLoading(true);
+  try {
+    [PLAYERS, MEMBERS] = await Promise.all([loadPlayers(), loadMembers()]);
+  } catch(e) {
+    console.error('Error cargando datos:', e);
+    PLAYERS = []; MEMBERS = [];
+  }
+  showLoading(false);
+
+  displayedCount = PAGE_SIZE;
+  renderPlayers(PLAYERS.slice(0, displayedCount));
+  const lm = document.getElementById('loadMore');
+  if (lm) lm.style.display = PLAYERS.length > displayedCount ? '' : 'none';
+
+  addMatchRow();
+  buildDatalist();
+  renderMembers();
+  await loadStats();
+});
+</script>
+</body>
+</html>
