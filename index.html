@@ -728,32 +728,29 @@
   <div class="alert-banner">
     <div class="alert-box">
       <span class="icon">⚠️</span>
-      <div>
-        <strong>3 membresías próximas a vencer</strong> en los próximos 30 días.
-        <span style="color:var(--muted)"> · 406 jugadores sin membresía activa.</span>
-      </div>
+      <div id="alertText">Cargando estado de membresías...</div>
     </div>
   </div>
 
   <div class="stats-row">
     <div class="stat-card gold">
       <div class="label">Miembros Activos</div>
-      <div class="value">145</div>
+      <div class="value" id="membActive">—</div>
       <div class="sub">Temporada 2026</div>
     </div>
     <div class="stat-card">
       <div class="label">Sin Membresía</div>
-      <div class="value" style="color:var(--red)">406</div>
+      <div class="value" style="color:var(--red)" id="membNo">—</div>
       <div class="sub">En ranking pero no miembros</div>
     </div>
     <div class="stat-card">
       <div class="label">Nuevos (Feb)</div>
-      <div class="value" style="color:var(--green)">38</div>
+      <div class="value" style="color:var(--green)" id="membNew">—</div>
       <div class="sub">Registrados este mes</div>
     </div>
     <div class="stat-card">
       <div class="label">Por Vencer</div>
-      <div class="value" style="color:var(--orange)">3</div>
+      <div class="value" style="color:var(--orange)" id="membWarn">—</div>
       <div class="sub">Próximos 30 días</div>
     </div>
   </div>
@@ -820,45 +817,44 @@
 const SUPABASE_URL = 'https://qrvyfdpwtearfpjruwja.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_mM59efPqpcgrR3g3_6F_Ww_h1jg4PyV';
 
-async function supabase(table, params = '') {
-  const url = `${SUPABASE_URL}/rest/v1/${table}${params}`;
-  const res = await fetch(url, {
-    headers: {
-      'apikey': SUPABASE_KEY,
-      'Authorization': `Bearer ${SUPABASE_KEY}`,
-      'Content-Type': 'application/json'
-    }
-  });
-  if (!res.ok) throw new Error(`Supabase error: ${res.status}`);
+const SB_HEADERS = {
+  'apikey': SUPABASE_KEY,
+  'Authorization': `Bearer ${SUPABASE_KEY}`,
+  'Content-Type': 'application/json'
+};
+
+async function sbGet(table, params = '') {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}${params}`, { headers: SB_HEADERS });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Supabase GET ${table} (${res.status}): ${err}`);
+  }
   return res.json();
 }
 
-async function supabasePost(table, body) {
+async function sbPatch(table, query, body) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${query}`, {
+    method: 'PATCH',
+    headers: { ...SB_HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Supabase PATCH ${table} (${res.status}): ${err}`);
+  }
+}
+
+async function sbPost(table, body) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
     method: 'POST',
-    headers: {
-      'apikey': SUPABASE_KEY,
-      'Authorization': `Bearer ${SUPABASE_KEY}`,
-      'Content-Type': 'application/json',
-      'Prefer': 'return=representation'
-    },
+    headers: { ...SB_HEADERS, 'Prefer': 'return=representation' },
     body: JSON.stringify(body)
   });
-  if (!res.ok) throw new Error(`Supabase error: ${res.status}`);
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Supabase POST ${table} (${res.status}): ${err}`);
+  }
   return res.json();
-}
-
-async function supabasePatch(table, id, body) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
-    method: 'PATCH',
-    headers: {
-      'apikey': SUPABASE_KEY,
-      'Authorization': `Bearer ${SUPABASE_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(body)
-  });
-  if (!res.ok) throw new Error(`Supabase error: ${res.status}`);
 }
 
 // ══════════════════════════════════════════
@@ -866,77 +862,143 @@ async function supabasePatch(table, id, body) {
 // ══════════════════════════════════════════
 let PLAYERS = [];
 let MEMBERS = [];
-let DB_STATS = { total: 0, members: 0, topRating: 0, topName: '' };
+// Cache player lookup by name for calculator autocomplete fill
+let PLAYER_BY_NAME = {};
 
 function showLoading(show) {
   let el = document.getElementById('loadingOverlay');
   if (!el) {
     el = document.createElement('div');
     el.id = 'loadingOverlay';
-    el.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,0.85);z-index:999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px';
-    el.innerHTML = '<div style="width:48px;height:48px;border:3px solid rgba(232,184,75,0.2);border-top-color:#e8b84b;border-radius:50%;animation:spin 0.8s linear infinite"></div><div style="font-family:Bebas Neue;font-size:20px;letter-spacing:3px;color:#e8b84b">CARGANDO...</div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>';
+    el.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,0.9);z-index:999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px';
+    el.innerHTML = `
+      <div style="width:48px;height:48px;border:3px solid rgba(232,184,75,0.2);border-top-color:#e8b84b;border-radius:50%;animation:spin 0.8s linear infinite"></div>
+      <div style="font-family:Bebas Neue;font-size:20px;letter-spacing:3px;color:#e8b84b">CARGANDO...</div>
+      <style>@keyframes spin{to{transform:rotate(360deg)}}</style>`;
     document.body.appendChild(el);
   }
   el.style.display = show ? 'flex' : 'none';
 }
 
+function showError(msg) {
+  document.getElementById('playerGrid').innerHTML = `
+    <div style="grid-column:1/-1;text-align:center;padding:40px 20px">
+      <div style="font-size:36px;margin-bottom:12px">⚠️</div>
+      <div style="color:var(--red);font-family:'Bebas Neue';font-size:22px;letter-spacing:2px">Error de Conexión</div>
+      <div style="color:var(--muted);font-size:13px;margin-top:8px;max-width:400px;margin-left:auto;margin-right:auto">${msg}</div>
+      <button onclick="location.reload()" class="btn-primary" style="margin-top:16px;font-size:13px;padding:8px 20px">↺ Reintentar</button>
+    </div>`;
+}
+
 async function loadPlayers(filter = {}) {
-  let params = '?order=rating_actual.desc&limit=500';
+  let params = '?order=rating_actual.desc&limit=600';
   if (filter.sexo)      params += `&sexo=eq.${encodeURIComponent(filter.sexo)}`;
   if (filter.categoria) params += `&categoria=eq.${encodeURIComponent(filter.categoria)}`;
   if (filter.member)    params += `&membresia_status=eq.Miembro`;
   if (filter.search)    params += `&nombre_completo=ilike.*${encodeURIComponent(filter.search)}*`;
 
-  const data = await supabase('jugadores', params);
+  const data = await sbGet('jugadores', params);
   return data.map((p, i) => ({
     id: p.id,
     rank: i + 1,
-    name: p.nombre_completo,
+    name: p.nombre_completo || `${p.primer_nombre || ''} ${p.primer_apellido || ''}`.trim(),
     sex: p.sexo,
     age: p.edad,
     cat: p.categoria,
     club: p.club,
     member: p.membresia_status === 'Miembro',
     rating: p.rating_actual,
-    ratingStart: p.rating_inicio_2025
+    ratingStart: p.rating_inicio_2026 || p.rating_inicio_2025 || p.rating_actual
   }));
 }
 
 async function loadMembers() {
-  const data = await supabase('miembros', '?order=fecha_membresia.desc&limit=200&temporada=eq.2026');
+  // miembros table columns from real data:
+  // nombre_completo, email, telefono, pueblo, ath (Member ID),
+  // fecha_membresia (join date), fecha_vencimiento (expiration date)
+  // Only fetch non-sensitive columns — never expose email, phone, or address publicly
+  const data = await sbGet('miembros', '?select=id,nombre_completo,club,sexo,edad,pueblo,ath,fecha_membresia,fecha_vencimiento&order=nombre_completo.asc&limit=300');
+  const now = new Date();
   return data.map(m => {
-    const fecha = m.fecha_membresia ? new Date(m.fecha_membresia) : null;
-    const diasDesde = fecha ? Math.floor((Date.now() - fecha) / 86400000) : 999;
-    let status = 'active';
-    if (diasDesde > 365) status = 'expired';
-    else if (diasDesde > 335) status = 'warning';
+    const nombre = m.nombre_completo || '—';
+    // Use expiration date to determine status (fecha_vencimiento)
+    // Fall back to fecha_membresia + 365 days if no expiration stored
+    const expDate = m.fecha_vencimiento
+      ? new Date(m.fecha_vencimiento)
+      : m.fecha_membresia
+        ? new Date(new Date(m.fecha_membresia).getTime() + 365 * 86400000)
+        : null;
+
+    let status = 'no';
+    let daysUntilExp = null;
+    if (expDate) {
+      daysUntilExp = Math.floor((expDate.getTime() - now.getTime()) / 86400000);
+      if (daysUntilExp < 0)        status = 'expired';
+      else if (daysUntilExp <= 30) status = 'warning';
+      else                          status = 'active';
+    }
+
     return {
-      id: m.id,
-      name: m.nombre_completo,
-      club: m.club,
-      sex: m.sexo,
-      age: m.edad,
-      date: m.fecha_membresia ? m.fecha_membresia.split('T')[0] : '—',
+      id:     m.id,
+      name:   nombre,
+      club:   m.club || '—',
+      sex:    m.sexo || '—',
+      age:    m.edad || '—',
+      date:   m.fecha_membresia
+                ? m.fecha_membresia.split('T')[0]
+                : '—',
+      expDate: expDate
+                ? expDate.toISOString().split('T')[0]
+                : '—',
+      daysUntilExp,
       status,
-      email: m.email,
-      tel: m.telefono,
-      pueblo: m.pueblo
+      email:  m.email   || '',
+      tel:    m.telefono || '',
+      pueblo: m.pueblo   || '',
+      ath:    m.ath ? '***' : '' // ATH shown only to admin — masked here
     };
   });
 }
 
-async function loadStats() {
-  const [total, members] = await Promise.all([
-    supabase('jugadores', '?select=count', '').catch(() => [{count: 0}]),
-    supabase('miembros', '?select=count&temporada=eq.2026').catch(() => [{count: 0}])
-  ]);
-
-  // Top player
+function updateStats() {
   const top = PLAYERS[0] || {};
-  document.getElementById('statTopRating').textContent  = top.rating || '—';
-  document.getElementById('statTopName').textContent    = top.name ? top.name.split(' ').slice(0,2).join(' ') : '—';
-  document.getElementById('statTotal').textContent      = PLAYERS.length;
-  document.getElementById('statMembers').textContent    = MEMBERS.length;
+  document.getElementById('statTopRating').textContent = top.rating || '—';
+  document.getElementById('statTopName').textContent   = top.name
+    ? top.name.split(' ').slice(0, 2).join(' ') : '—';
+  document.getElementById('statTotal').textContent   = PLAYERS.length;
+  document.getElementById('statMembers').textContent = PLAYERS.filter(p => p.member).length;
+
+  // Membresía page stats
+  const active  = MEMBERS.filter(m => m.status === 'active').length;
+  const warning = MEMBERS.filter(m => m.status === 'warning').length;
+  const noMember = PLAYERS.filter(p => !p.member).length;
+  const thisMonth = MEMBERS.filter(m => {
+    if (!m.date || m.date === '—') return false;
+    const d = new Date(m.date);
+    const now = new Date();
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  }).length;
+
+  const els = {
+    membActive: active + warning,
+    membNo: noMember,
+    membNew: thisMonth,
+    membWarn: warning
+  };
+  Object.entries(els).forEach(([id, val]) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val;
+  });
+
+  // Alert banner
+  const alertEl = document.getElementById('alertText');
+  if (alertEl) {
+    if (warning > 0) {
+      alertEl.innerHTML = `<strong>${warning} membresía${warning>1?'s':''} próxima${warning>1?'s':''} a vencer</strong> en los próximos 30 días. <span style="color:var(--muted)"> · ${noMember} jugadores sin membresía activa.</span>`;
+    } else {
+      alertEl.innerHTML = `<strong style="color:var(--green)">✓ Todas las membresías están al día.</strong> <span style="color:var(--muted)">${noMember} jugadores sin membresía.</span>`;
+    }
+  }
 }
 
 // ══════════════════════════════════════════
@@ -953,13 +1015,13 @@ const pages = {
 function showPage(key) {
   Object.values(pages).forEach(id => {
     const el = document.getElementById(id);
-    if (el) { el.classList.remove('active'); el.style.display='none'; }
+    if (el) { el.classList.remove('active'); el.style.display = 'none'; }
   });
   const target = document.getElementById(pages[key]);
-  if (target) { target.style.display='block'; setTimeout(()=>target.classList.add('active'),10); }
+  if (target) { target.style.display = 'block'; setTimeout(() => target.classList.add('active'), 10); }
 
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
-  const navMap = {rankings:0, calculator:1, membresia:2, admin:3};
+  const navMap = { rankings: 0, calculator: 1, membresia: 2, admin: 3 };
   if (navMap[key] !== undefined) document.querySelectorAll('nav button')[navMap[key]].classList.add('active');
 }
 
@@ -968,33 +1030,39 @@ function showPage(key) {
 // ══════════════════════════════════════════
 let currentFilter = 'all';
 let displayedCount = 0;
-const PAGE_SIZE = 12;
+const PAGE_SIZE = 20;
 
 function initials(name) {
-  return name.split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
+  if (!name || name === '—') return '??';
+  return name.split(' ').slice(0, 2).map(w => w[0] || '').join('').toUpperCase();
 }
 
-function renderPlayers(list, append=false) {
+function renderPlayers(list, append = false) {
   const grid = document.getElementById('playerGrid');
   if (!append) grid.innerHTML = '';
+
+  if (!list.length && !append) {
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--muted)">No se encontraron jugadores con este filtro.</div>';
+    return;
+  }
+
   list.forEach(p => {
     const card = document.createElement('div');
     card.className = 'player-card' + (!p.member ? ' no-member' : '');
     card.onclick = () => showProfile(p);
     card.innerHTML = `
-      <div class="rank-num ${p.rank<=3?'top3'}#${p.rank}">#${p.rank}</div>
+      <div class="rank-num ${p.rank <= 3 ? 'top3' : ''}">#${p.rank}</div>
       <div class="avatar">${initials(p.name)}</div>
       <div class="player-info">
         <div class="player-name">${p.name}
-          <span class="badge ${p.member?'member':'no'}">${p.member?'✓ Miembro':'✗ No Miembro'}</span>
+          <span class="badge ${p.member ? 'member' : 'no'}">${p.member ? '✓ Miembro' : '✗ No Miembro'}</span>
         </div>
-        <div class="player-meta">${p.cat||'—'} · ${p.club||'Sin club'} · ${p.sex||'—'}</div>
+        <div class="player-meta">${p.cat || '—'} · ${p.club || 'Sin club'} · ${p.sex || '—'}</div>
       </div>
       <div class="player-right">
         <div class="rating-num"><span class="star">★</span>${p.rating}</div>
-        <div class="player-stats">${p.age ? p.age+' años' : '—'}</div>
-      </div>
-    `;
+        <div class="player-stats">${p.age ? p.age + ' años' : '—'}</div>
+      </div>`;
     grid.appendChild(card);
   });
 }
@@ -1002,147 +1070,195 @@ function renderPlayers(list, append=false) {
 function loadMorePlayers() {
   const next = PLAYERS.slice(displayedCount, displayedCount + PAGE_SIZE);
   renderPlayers(next, true);
-  displayedCount += PAGE_SIZE;
-  if (displayedCount >= PLAYERS.length) document.getElementById('loadMore').style.display='none';
+  displayedCount += next.length;
+  if (displayedCount >= PLAYERS.length) document.getElementById('loadMore').style.display = 'none';
 }
 
 // ══════════════════════════════════════════
-// PLAYER PROFILE
+// PLAYER PROFILE — real data from DB
 // ══════════════════════════════════════════
-const MOCK_TOURNAMENTS = [
-  {name:"Clasificatorio Febrero 2026", date:"Feb 15, 2026", ratingBefore:2050, ratingAfter:2132, won:8, lost:2},
-  {name:"Copa Navidad 2025", date:"Dic 20, 2025", ratingBefore:1998, ratingAfter:2050, won:6, lost:1},
-  {name:"Albergue Olímpico Open 2025", date:"Nov 5, 2025", ratingBefore:1960, ratingAfter:1998, won:5, lost:3},
-];
+async function showProfile(player) {
+  // Reset tabs to overview
+  document.querySelectorAll('.ptab').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.ptab-content').forEach(c => c.classList.remove('active'));
+  document.querySelectorAll('.ptab')[0].classList.add('active');
+  document.getElementById('tab-overview').classList.add('active');
 
-const MOCK_MATCHES = [
-  {opp:"Jabdiel Torres", oppRating:2174, result:"11-8, 11-5, 11-7", won:false, myPts:-3, myBefore:2132},
-  {opp:"Enrique Rios Torres", oppRating:2101, result:"11-9, 9-11, 11-7, 11-6", won:true, myPts:+8, myBefore:2050},
-  {opp:"Yadier López Velez", oppRating:2041, result:"11-6, 11-4, 11-8", won:true, myPts:+8, myBefore:2042},
-  {opp:"Ryan Cuadro Pérez", oppRating:2006, result:"9-11, 11-7, 8-11, 11-9, 11-6", won:true, myPts:+7, myBefore:2034},
-  {opp:"Dereck Valentín", oppRating:2012, result:"11-8, 11-9, 11-3", won:true, myPts:+8, myBefore:2027},
-];
-
-function showProfile(player) {
-  // Fill profile
+  // Basic info
   document.getElementById('profileAvatar').textContent = initials(player.name);
-  document.getElementById('profileName').textContent = player.name;
-  document.getElementById('profileId').textContent = 'FPRTM #' + String(player.rank).padStart(4,'0');
-  document.getElementById('profileClub').textContent = player.club || 'Sin club';
-  document.getElementById('profileBadge').textContent = player.member ? '✓ Miembro' : '✗ No Miembro';
-  document.getElementById('profileBadge').className = 'badge ' + (player.member ? 'member' : 'no');
+  document.getElementById('profileName').textContent   = player.name;
+  document.getElementById('profileId').textContent     = 'FPRTM #' + String(player.rank).padStart(4, '0');
+  document.getElementById('profileClub').textContent   = player.club || 'Sin club';
+  document.getElementById('profileBadge').textContent  = player.member ? '✓ Miembro' : '✗ No Miembro';
+  document.getElementById('profileBadge').className    = 'badge ' + (player.member ? 'member' : 'no');
   document.getElementById('profileRating').textContent = player.rating;
-  document.getElementById('profileCategory').textContent = [player.cat, player.sex, player.age ? player.age+' años':''].filter(Boolean).join(' · ');
+  document.getElementById('profileCategory').textContent =
+    [player.cat, player.sex, player.age ? player.age + ' años' : ''].filter(Boolean).join(' · ');
   document.getElementById('ovRank').textContent = '#' + player.rank;
-
-  // Mock stats
-  const matches = 18 + player.rank;
-  const wins = Math.floor(matches * 0.72);
-  const losses = matches - wins;
-  const pct = Math.round(wins/matches*100);
-
-  document.getElementById('pMatches').textContent = matches;
-  document.getElementById('pWins').textContent = wins;
-  document.getElementById('pLosses').textContent = losses;
-  document.getElementById('pPct').textContent = pct + '%';
-  document.getElementById('winPct').textContent = pct + '%';
-  document.getElementById('winCircle').style.strokeDashoffset = 213.6 * (1 - pct/100);
-  document.getElementById('startRating').textContent = player.rating - 132;
+  document.getElementById('startRating').textContent   = player.ratingStart || player.rating;
   document.getElementById('currentRating').textContent = player.rating;
-  document.getElementById('ovPtsYTD').textContent = '+' + 132;
 
-  // Tournaments
-  const tl = document.getElementById('tournList');
-  tl.innerHTML = MOCK_TOURNAMENTS.map(t => {
-    const diff = t.ratingAfter - t.ratingBefore;
-    return `<div class="tourn-item">
-      <div>
-        <div class="tourn-name">${t.name}</div>
-        <div class="tourn-date">${t.date}</div>
-        <div class="tourn-matches" style="margin-top:6px">
-          <span style="color:var(--green)">✓ ${t.won} ganados</span> &nbsp;
-          <span style="color:var(--red)">✗ ${t.lost} perdidos</span>
-        </div>
-      </div>
-      <div class="tourn-right">
-        <div class="rating-change ${diff>=0?'up':'dn'}">${diff>=0?'+':''}${diff} pts</div>
-        <div class="tourn-matches">${t.ratingBefore} → ${t.ratingAfter}</div>
-      </div>
-    </div>`;
-  }).join('');
-
-  // Matches
-  const ml = document.getElementById('matchList');
-  ml.innerHTML = MOCK_MATCHES.map(m => {
-    const fav = m.myBefore > m.oppRating;
-    return `<div class="match-item">
-      <div class="match-player ${m.won?'winner':'loser'}">
-        <div class="name">${m.won?'👑 ':''} ${player.name.split(' ')[0]}</div>
-        <div class="rating-tag">★ ${m.myBefore}</div>
-        <div class="pts-change">${m.myPts>=0?'+':''}${m.myPts} pts</div>
-      </div>
-      <div class="match-center">
-        <div class="match-score">VS</div>
-        <div class="match-date" style="font-size:10px">${m.result}</div>
-      </div>
-      <div class="match-player ${!m.won?'winner':'loser'} right">
-        <div class="name">${!m.won?'👑 ':''} ${m.opp.split(' ')[0]}</div>
-        <div class="rating-tag">★ ${m.oppRating}</div>
-        <div class="pts-change">${m.won ? '-'+Math.abs(m.myPts) : '+'+Math.abs(m.myPts)} pts</div>
-      </div>
-    </div>`;
-  }).join('');
+  const ytd = player.rating - (player.ratingStart || player.rating);
+  document.getElementById('ovPtsYTD').textContent = (ytd >= 0 ? '+' : '') + ytd;
 
   showPage('profile');
-  document.getElementById('tab-overview').classList.add('active');
+
+  // Placeholder stats while loading
+  document.getElementById('pMatches').textContent = '…';
+  document.getElementById('pWins').textContent    = '…';
+  document.getElementById('pLosses').textContent  = '…';
+  document.getElementById('pPct').textContent     = '…';
+  document.getElementById('ovTourneys').textContent = '…';
+  document.getElementById('tournList').innerHTML  = '<div style="color:var(--muted);padding:20px">Cargando torneos...</div>';
+  document.getElementById('matchList').innerHTML  = '<div style="color:var(--muted);padding:20px">Cargando partidos...</div>';
+
+  // Load real match data
+  try {
+    const matches = await sbGet('partidos',
+      `?or=(jugador_a_id.eq.${player.id},jugador_b_id.eq.${player.id})&order=fecha.desc&limit=50`
+    );
+
+    let wins = 0, losses = 0;
+    const tourneyMap = {};
+
+    matches.forEach(m => {
+      const isA = m.jugador_a_id === player.id;
+      const won  = m.ganador === (isA ? 'A' : 'B');
+      if (won) wins++; else losses++;
+      if (m.torneo_id) {
+        if (!tourneyMap[m.torneo_id]) tourneyMap[m.torneo_id] = { wins: 0, losses: 0, torneo_id: m.torneo_id, nombre: m.torneo_nombre || `Torneo #${m.torneo_id}`, fecha: m.fecha };
+        if (won) tourneyMap[m.torneo_id].wins++; else tourneyMap[m.torneo_id].losses++;
+      }
+    });
+
+    const total = wins + losses;
+    const pct   = total > 0 ? Math.round(wins / total * 100) : 0;
+
+    document.getElementById('pMatches').textContent = total;
+    document.getElementById('pWins').textContent    = wins;
+    document.getElementById('pLosses').textContent  = losses;
+    document.getElementById('pPct').textContent     = pct + '%';
+    document.getElementById('winPct').textContent   = pct + '%';
+    document.getElementById('winCircle').style.strokeDashoffset = 213.6 * (1 - pct / 100);
+
+    const tourneys = Object.values(tourneyMap);
+    document.getElementById('ovTourneys').textContent = tourneys.length;
+
+    // Render tournaments
+    const tl = document.getElementById('tournList');
+    if (tourneys.length) {
+      tl.innerHTML = tourneys.map(t => `
+        <div class="tourn-item">
+          <div>
+            <div class="tourn-name">${t.nombre}</div>
+            <div class="tourn-date">${t.fecha ? new Date(t.fecha).toLocaleDateString('es-PR', {year:'numeric',month:'short',day:'numeric'}) : '—'}</div>
+            <div class="tourn-matches" style="margin-top:6px">
+              <span style="color:var(--green)">✓ ${t.wins} ganados</span> &nbsp;
+              <span style="color:var(--red)">✗ ${t.losses} perdidos</span>
+            </div>
+          </div>
+          <div class="tourn-right">
+            <div class="tourn-matches">${t.wins + t.losses} partidos</div>
+          </div>
+        </div>`).join('');
+    } else {
+      tl.innerHTML = '<div style="color:var(--muted);padding:20px;text-align:center">Sin torneos registrados aún.</div>';
+    }
+
+    // Render matches
+    const ml = document.getElementById('matchList');
+    if (matches.length) {
+      ml.innerHTML = matches.slice(0, 20).map(m => {
+        const isA    = m.jugador_a_id === player.id;
+        const myRating = isA ? m.rating_a_antes : m.rating_b_antes;
+        const oppName  = isA ? (m.nombre_b || `Jugador #${m.jugador_b_id}`) : (m.nombre_a || `Jugador #${m.jugador_a_id}`);
+        const oppRating = isA ? m.rating_b_antes : m.rating_a_antes;
+        const myAfter   = isA ? m.rating_a_despues : m.rating_b_despues;
+        const pts = (myAfter || myRating) - (myRating || 0);
+        const won = m.ganador === (isA ? 'A' : 'B');
+        const score = m.resultado || 'VS';
+        return `<div class="match-item">
+          <div class="match-player ${won ? 'winner' : 'loser'}">
+            <div class="name">${won ? '👑 ' : ''}${player.name.split(' ')[0]}</div>
+            <div class="rating-tag">★ ${myRating || '—'}</div>
+            ${myAfter ? `<div class="pts-change">${pts >= 0 ? '+' : ''}${pts} pts</div>` : ''}
+          </div>
+          <div class="match-center">
+            <div class="match-score">${score}</div>
+            <div class="match-date">${m.fecha ? new Date(m.fecha).toLocaleDateString('es-PR',{month:'short',day:'numeric'}) : ''}</div>
+          </div>
+          <div class="match-player ${!won ? 'winner' : 'loser'} right">
+            <div class="name">${!won ? '👑 ' : ''}${oppName.split(' ')[0]}</div>
+            <div class="rating-tag">★ ${oppRating || '—'}</div>
+          </div>
+        </div>`;
+      }).join('');
+    } else {
+      ml.innerHTML = '<div style="color:var(--muted);padding:20px;text-align:center">Sin partidos registrados aún.</div>';
+    }
+
+  } catch (e) {
+    console.warn('No se pudo cargar historial de partidos:', e.message);
+    // Graceful fallback — show 0 stats
+    document.getElementById('pMatches').textContent = 0;
+    document.getElementById('pWins').textContent    = 0;
+    document.getElementById('pLosses').textContent  = 0;
+    document.getElementById('pPct').textContent     = '—';
+    document.getElementById('ovTourneys').textContent = 0;
+    document.getElementById('tournList').innerHTML  = '<div style="color:var(--muted);padding:20px;text-align:center">Sin torneos registrados aún.</div>';
+    document.getElementById('matchList').innerHTML  = '<div style="color:var(--muted);padding:20px;text-align:center">Sin partidos registrados aún.</div>';
+  }
 }
 
-function backToRankings() {
-  showPage('rankings');
-}
+function backToRankings() { showPage('rankings'); }
 
 function showPTab(btn, tabId) {
-  document.querySelectorAll('.ptab').forEach(b=>b.classList.remove('active'));
-  document.querySelectorAll('.ptab-content').forEach(c=>c.classList.remove('active'));
+  document.querySelectorAll('.ptab').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.ptab-content').forEach(c => c.classList.remove('active'));
   btn.classList.add('active');
-  document.getElementById('tab-'+tabId).classList.add('active');
+  document.getElementById('tab-' + tabId).classList.add('active');
 }
 
 // ══════════════════════════════════════════
 // RATING CALCULATOR
 // ══════════════════════════════════════════
 const POINT_TABLE = [
-  {maxDiff:24, fav:8, underdog:8},
-  {maxDiff:49, fav:7, underdog:10},
-  {maxDiff:99, fav:5, underdog:12},
-  {maxDiff:149, fav:3, underdog:15},
-  {maxDiff:199, fav:2, underdog:20},
-  {maxDiff:249, fav:1, underdog:26},
-  {maxDiff:Infinity, fav:0, underdog:32},
+  { maxDiff: 24,       fav: 8, underdog: 8  },
+  { maxDiff: 49,       fav: 7, underdog: 10 },
+  { maxDiff: 99,       fav: 5, underdog: 12 },
+  { maxDiff: 149,      fav: 3, underdog: 15 },
+  { maxDiff: 199,      fav: 2, underdog: 20 },
+  { maxDiff: 249,      fav: 1, underdog: 26 },
+  { maxDiff: Infinity, fav: 0, underdog: 32 },
 ];
 
 function getPoints(rA, rB, winnerIsA) {
-  const diff = Math.abs(rA - rB);
-  const row = POINT_TABLE.find(r => diff <= r.maxDiff);
+  const diff  = Math.abs(rA - rB);
+  const row   = POINT_TABLE.find(r => diff <= r.maxDiff);
   const aIsFav = rA >= rB;
   if (winnerIsA) {
-    return { aGain: aIsFav ? row.fav : row.underdog, bGain: -(aIsFav ? row.fav : row.underdog) };
+    const pts = aIsFav ? row.fav : row.underdog;
+    return { aGain: pts, bGain: -pts };
   } else {
-    return { aGain: -(aIsFav ? row.underdog : row.fav), bGain: aIsFav ? row.underdog : row.fav };
+    const pts = aIsFav ? row.underdog : row.fav;
+    return { aGain: -pts, bGain: pts };
   }
 }
 
 let matchRows = 0;
+// Accumulate calculated results for applying to DB
+let pendingResults = [];
+
 function addMatchRow() {
   matchRows++;
   const id = matchRows;
   const div = document.createElement('div');
   div.className = 'match-entry';
-  div.id = 'mrow'+id;
+  div.id = 'mrow' + id;
   div.innerHTML = `
     <div class="field-group">
       <label>Jugador A</label>
-      <input type="text" id="pA${id}" placeholder="Nombre" list="playerList">
+      <input type="text" id="pA${id}" placeholder="Nombre" list="playerList" oninput="autoFillRating(${id},'A')">
     </div>
     <div class="field-group" style="min-width:80px">
       <label>Rating A</label>
@@ -1151,7 +1267,7 @@ function addMatchRow() {
     <div class="vs-badge">VS</div>
     <div class="field-group">
       <label>Jugador B</label>
-      <input type="text" id="pB${id}" placeholder="Nombre" list="playerList">
+      <input type="text" id="pB${id}" placeholder="Nombre" list="playerList" oninput="autoFillRating(${id},'B')">
     </div>
     <div class="field-group" style="min-width:80px">
       <label>Rating B</label>
@@ -1163,133 +1279,229 @@ function addMatchRow() {
         <option value="A">A ganó</option>
         <option value="B">B ganó</option>
       </select>
-    </div>
-  `;
+    </div>`;
   document.getElementById('matchEntries').appendChild(div);
 }
 
-// Build datalist for autocomplete
+function autoFillRating(rowId, side) {
+  const nameEl   = document.getElementById(`p${side}${rowId}`);
+  const ratingEl = document.getElementById(`r${side}${rowId}`);
+  if (!nameEl || !ratingEl) return;
+  const player = PLAYER_BY_NAME[nameEl.value.trim().toLowerCase()];
+  if (player) ratingEl.value = player.rating;
+}
+
 function buildDatalist() {
-  const dl = document.createElement('datalist');
-  dl.id = 'playerList';
+  let dl = document.getElementById('playerList');
+  if (!dl) { dl = document.createElement('datalist'); dl.id = 'playerList'; document.body.appendChild(dl); }
+  dl.innerHTML = '';
   PLAYERS.forEach(p => {
     const opt = document.createElement('option');
     opt.value = p.name;
     dl.appendChild(opt);
+    PLAYER_BY_NAME[p.name.toLowerCase()] = p;
   });
-  document.body.appendChild(dl);
 }
 
 function calculateRatings() {
-  const results = [];
-  for (let i=1; i<=matchRows; i++) {
-    const pA = document.getElementById('pA'+i)?.value;
-    const pB = document.getElementById('pB'+i)?.value;
-    const rA = parseInt(document.getElementById('rA'+i)?.value);
-    const rB = parseInt(document.getElementById('rB'+i)?.value);
-    const win = document.getElementById('win'+i)?.value;
+  pendingResults = [];
+  for (let i = 1; i <= matchRows; i++) {
+    const pA  = document.getElementById('pA' + i)?.value.trim();
+    const pB  = document.getElementById('pB' + i)?.value.trim();
+    const rA  = parseInt(document.getElementById('rA' + i)?.value);
+    const rB  = parseInt(document.getElementById('rB' + i)?.value);
+    const win = document.getElementById('win' + i)?.value;
     if (!pA || !pB || isNaN(rA) || isNaN(rB)) continue;
-    const {aGain, bGain} = getPoints(rA, rB, win==='A');
-    results.push({pA, pB, rA, rB, aGain, bGain, winner: win==='A' ? pA : pB});
+    const { aGain, bGain } = getPoints(rA, rB, win === 'A');
+    const playerA = PLAYERS.find(p => p.name.toLowerCase() === pA.toLowerCase());
+    const playerB = PLAYERS.find(p => p.name.toLowerCase() === pB.toLowerCase());
+    pendingResults.push({ pA, pB, rA, rB, aGain, bGain, winner: win === 'A' ? pA : pB, idA: playerA?.id, idB: playerB?.id });
   }
-  if (!results.length) { alert('Ingresa al menos un partido completo.'); return; }
+
+  if (!pendingResults.length) { alert('Ingresa al menos un partido completo.'); return; }
 
   const body = document.getElementById('calcResultBody');
-  body.innerHTML = results.map(r => `
+  body.innerHTML = pendingResults.map(r => `
     <div class="result-row">
       <div class="result-player">
-        ${r.winner===r.pA ? '👑 ' : ''}<strong>${r.pA}</strong> (${r.rA} → ${r.rA+r.aGain})
+        ${r.winner === r.pA ? '👑 ' : ''}<strong>${r.pA}</strong>
+        <span style="color:var(--muted);font-size:12px">${r.rA} → ${r.rA + r.aGain}</span>
+        ${!r.idA ? '<span style="color:var(--orange);font-size:11px"> ⚠ no en BD</span>' : ''}
       </div>
-      <div class="result-pts ${r.aGain>=0?'gain':'loss'}">${r.aGain>=0?'+':''}${r.aGain}</div>
+      <div class="result-pts ${r.aGain >= 0 ? 'gain' : 'loss'}">${r.aGain >= 0 ? '+' : ''}${r.aGain}</div>
     </div>
     <div class="result-row">
       <div class="result-player">
-        ${r.winner===r.pB ? '👑 ' : ''}<strong>${r.pB}</strong> (${r.rB} → ${r.rB+r.bGain})
+        ${r.winner === r.pB ? '👑 ' : ''}<strong>${r.pB}</strong>
+        <span style="color:var(--muted);font-size:12px">${r.rB} → ${r.rB + r.bGain}</span>
+        ${!r.idB ? '<span style="color:var(--orange);font-size:11px"> ⚠ no en BD</span>' : ''}
       </div>
-      <div class="result-pts ${r.bGain>=0?'gain':'loss'}">${r.bGain>=0?'+':''}${r.bGain}</div>
-    </div>
-  `).join('<hr style="border-color:var(--border);margin:4px 0">');
+      <div class="result-pts ${r.bGain >= 0 ? 'gain' : 'loss'}">${r.bGain >= 0 ? '+' : ''}${r.bGain}</div>
+    </div>`).join('<hr style="border-color:var(--border);margin:4px 0">');
 
   document.getElementById('calcResult').classList.add('show');
 }
 
-function applyRatings() {
-  alert('✅ Ratings aplicados a la base de datos.\n\n(En producción, esto actualizaría el servidor.)');
-  document.getElementById('calcResult').classList.remove('show');
+async function applyRatings() {
+  const btn = document.querySelector('#calcResult .btn-primary');
+  btn.disabled = true;
+  btn.textContent = '⏳ Aplicando...';
+
+  const tournName = document.getElementById('tournName')?.value.trim() || 'Torneo sin nombre';
+  let errors = [];
+  let applied = 0;
+
+  // Create torneo record if we have one
+  let torneoId = null;
+  try {
+    const [torneo] = await sbPost('torneos', { nombre: tournName, fecha: new Date().toISOString().split('T')[0] });
+    torneoId = torneo?.id;
+  } catch (e) {
+    console.warn('No se pudo crear torneo:', e.message);
+  }
+
+  for (const r of pendingResults) {
+    const newRA = r.rA + r.aGain;
+    const newRB = r.rB + r.bGain;
+
+    // Update player A rating
+    if (r.idA) {
+      try {
+        await sbPatch('jugadores', `id=eq.${r.idA}`, { rating_actual: newRA });
+        // Update local cache
+        const p = PLAYERS.find(x => x.id === r.idA);
+        if (p) p.rating = newRA;
+        applied++;
+      } catch (e) { errors.push(`${r.pA}: ${e.message}`); }
+    }
+
+    // Update player B rating
+    if (r.idB) {
+      try {
+        await sbPatch('jugadores', `id=eq.${r.idB}`, { rating_actual: newRB });
+        const p = PLAYERS.find(x => x.id === r.idB);
+        if (p) p.rating = newRB;
+        applied++;
+      } catch (e) { errors.push(`${r.pB}: ${e.message}`); }
+    }
+
+    // Record the match
+    if (torneoId && r.idA && r.idB) {
+      try {
+        await sbPost('partidos', {
+          torneo_id: torneoId,
+          jugador_a_id: r.idA,
+          jugador_b_id: r.idB,
+          ganador: r.winner === r.pA ? 'A' : 'B',
+          rating_a_antes: r.rA,
+          rating_a_despues: newRA,
+          rating_b_antes: r.rB,
+          rating_b_despues: newRB,
+          fecha: new Date().toISOString().split('T')[0]
+        });
+      } catch (e) { console.warn('No se guardó partido:', e.message); }
+    }
+  }
+
+  btn.disabled = false;
+  btn.textContent = '✓ Aplicar a Base de Datos';
+
+  if (errors.length) {
+    alert(`⚠️ Se aplicaron ${applied} cambios.\n\nErrores:\n${errors.join('\n')}\n\nVerifica los permisos de escritura en Supabase.`);
+  } else {
+    alert(`✅ ${applied} ratings actualizados en Supabase.\n\nLos cambios son visibles en tiempo real.`);
+    document.getElementById('calcResult').classList.remove('show');
+    // Re-sort players
+    PLAYERS.sort((a, b) => b.rating - a.rating);
+    PLAYERS.forEach((p, i) => p.rank = i + 1);
+    displayedCount = PAGE_SIZE;
+    renderPlayers(PLAYERS.slice(0, PAGE_SIZE));
+  }
 }
 
 function handleImageUpload(e) {
   const file = e.target.files[0];
   if (!file) return;
-  alert('📸 Imagen recibida: ' + file.name + '\n\nEn producción, OCR leerá los resultados automáticamente y completará los partidos.\n\nTecnología: Google Vision API o Tesseract.js');
+  alert('📸 Imagen recibida: ' + file.name + '\n\nFuncionalidad OCR próximamente.\nPor ahora ingresa los resultados manualmente.');
+  e.target.value = '';
 }
 
 // ══════════════════════════════════════════
 // MEMBRESÍA
 // ══════════════════════════════════════════
 let membFilter = 'all';
+
 function renderMembers() {
   const filtered = MEMBERS.filter(m => {
-    if (membFilter === 'active') return m.status === 'active';
+    if (membFilter === 'active')  return m.status === 'active';
     if (membFilter === 'warning') return m.status === 'warning';
-    if (membFilter === 'no') return m.status === 'expired';
+    if (membFilter === 'no')      return false; // non-members come from PLAYERS
     return true;
   });
+
   const grid = document.getElementById('membGrid');
+  const labels = { active: '✅ Activo', warning: '⚠️ Por Vencer', expired: '❌ Expirado' };
+
   grid.innerHTML = filtered.map(m => {
-    const labels = {active:'✅ Activo', warning:'⚠️ Por Vencer', expired:'❌ Expirado'};
-    const cls = m.status;
+    const expInfo = m.daysUntilExp !== null
+      ? (m.daysUntilExp >= 0
+          ? `Vence: ${m.expDate} (${m.daysUntilExp}d)`
+          : `Venció: ${m.expDate}`)
+      : '—';
     return `<div class="memb-item">
       <div class="memb-avatar">${initials(m.name)}</div>
       <div>
         <div class="memb-name">${m.name}</div>
-        <div class="memb-meta">${m.club} · ${m.sex} · ${m.age} años</div>
+        <div class="memb-meta">${m.club !== '—' ? m.club : (m.pueblo || '—')}</div>
       </div>
       <div class="memb-date">
-        <div style="font-size:11px;color:var(--muted)">Desde</div>
-        <div class="date">${m.date}</div>
+        <div style="font-size:11px;color:var(--muted)">${expInfo}</div>
       </div>
-      <div class="status-pill ${cls}">${labels[m.status]}</div>
+      <div class="status-pill ${m.status}">${labels[m.status]}</div>
     </div>`;
   }).join('');
 
-  // Add non-members from player list
+  // Non-members from player list
   if (membFilter === 'all' || membFilter === 'no') {
-    const noMembers = PLAYERS.filter(p => !p.member).slice(0,8);
-    noMembers.forEach(p => {
+    const noMembers = PLAYERS.filter(p => !p.member);
+    const toShow = membFilter === 'no' ? noMembers : noMembers.slice(0, 12);
+    toShow.forEach(p => {
       const div = document.createElement('div');
       div.className = 'memb-item';
-      div.style.opacity = '0.6';
+      div.style.opacity = '0.65';
       div.innerHTML = `
-        <div class="memb-avatar" style="background:rgba(239,68,68,0.2);color:var(--red)">${initials(p.name)}</div>
+        <div class="memb-avatar" style="background:rgba(239,68,68,0.15);color:var(--red)">${initials(p.name)}</div>
         <div>
           <div class="memb-name">${p.name}</div>
-          <div class="memb-meta">${p.club||'Sin club'} · Rating ${p.rating}</div>
+          <div class="memb-meta">${p.club || 'Sin club'} · ★ ${p.rating}</div>
         </div>
-        <div class="memb-date"><div style="font-size:11px;color:var(--muted)">Nunca registrado</div></div>
-        <div class="status-pill expired">❌ No Miembro</div>
-      `;
+        <div class="memb-date"><div style="font-size:11px;color:var(--muted)">Sin registro</div></div>
+        <div class="status-pill expired">❌ No Miembro</div>`;
       grid.appendChild(div);
     });
+  }
+
+  if (grid.innerHTML === '') {
+    grid.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">No hay registros en esta categoría.</div>';
   }
 }
 
 function setMembFilter(el, val) {
-  document.querySelectorAll('#membresia_page .filter-chip').forEach(c=>c.classList.remove('on'));
+  document.querySelectorAll('#membresia_page .filter-chip').forEach(c => c.classList.remove('on'));
   el.classList.add('on');
   membFilter = val;
   renderMembers();
 }
 
 // ══════════════════════════════════════════
-// FILTER — async override
+// FILTER / SEARCH
 // ══════════════════════════════════════════
 let searchTimeout = null;
 
 async function filterPlayers() {
   const q = document.getElementById('searchInput').value.trim();
   const filter = {};
-  if (currentFilter === 'Masculino')  filter.sexo = 'Masculino';
+  if      (currentFilter === 'Masculino') filter.sexo = 'Masculino';
   else if (currentFilter === 'Femenino')  filter.sexo = 'Femenino';
   else if (currentFilter === 'Juv21U')    filter.categoria = 'Juv21U';
   else if (currentFilter === 'Juv21')     filter.categoria = 'Juv21';
@@ -1300,14 +1512,13 @@ async function filterPlayers() {
   try {
     PLAYERS = await loadPlayers(filter);
     displayedCount = PAGE_SIZE;
-    renderPlayers(PLAYERS.slice(0, displayedCount));
+    renderPlayers(PLAYERS.slice(0, PAGE_SIZE));
     const lm = document.getElementById('loadMore');
     if (lm) lm.style.display = PLAYERS.length > displayedCount ? '' : 'none';
-    await loadStats();
-  } catch(e) {
+    updateStats();
+  } catch (e) {
     console.error(e);
-    document.getElementById('playerGrid').innerHTML =
-      '<p style="color:var(--red);padding:20px;grid-column:1/-1">Error conectando a Supabase.</p>';
+    showError('No se pudo conectar a Supabase. Verifica tu conexión e intenta de nuevo.');
   }
 }
 
@@ -1319,7 +1530,7 @@ function setFilter(el, val) {
 }
 
 // ══════════════════════════════════════════
-// INIT — async
+// INIT
 // ══════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', async () => {
   Object.values(pages).forEach(id => {
@@ -1327,33 +1538,31 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (el && id !== 'rankingsPage') el.style.display = 'none';
   });
 
-  // Hook search debounce
-  const searchInput = document.getElementById('searchInput');
-  if (searchInput) {
-    searchInput.oninput = () => {
-      clearTimeout(searchTimeout);
-      searchTimeout = setTimeout(filterPlayers, 350);
-    };
-  }
+  document.getElementById('searchInput').addEventListener('input', () => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(filterPlayers, 350);
+  });
 
   showLoading(true);
   try {
     [PLAYERS, MEMBERS] = await Promise.all([loadPlayers(), loadMembers()]);
-  } catch(e) {
+  } catch (e) {
     console.error('Error cargando datos:', e);
+    showLoading(false);
+    showError(`No se pudo conectar a Supabase.<br><small style="font-family:monospace">${e.message}</small>`);
     PLAYERS = []; MEMBERS = [];
   }
   showLoading(false);
 
   displayedCount = PAGE_SIZE;
-  renderPlayers(PLAYERS.slice(0, displayedCount));
+  renderPlayers(PLAYERS.slice(0, PAGE_SIZE));
   const lm = document.getElementById('loadMore');
-  if (lm) lm.style.display = PLAYERS.length > displayedCount ? '' : 'none';
+  if (lm) lm.style.display = PLAYERS.length > PAGE_SIZE ? '' : 'none';
 
-  addMatchRow();
   buildDatalist();
+  addMatchRow();
   renderMembers();
-  await loadStats();
+  updateStats();
 });
 </script>
 </body>
