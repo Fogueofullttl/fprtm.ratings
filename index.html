@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FPRTM — Sistema de Ratings y Membresía</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   :root {
     --navy: #0a1628;
@@ -492,6 +493,63 @@
   tr td:first-child { font-family: 'Bebas Neue'; font-size: 20px; color: var(--muted); }
 
   .scrollhint { text-align: center; color: var(--muted); font-size: 13px; margin: 24px 0; }
+
+  /* ─── LOGIN MODAL ─── */
+  #loginModal {
+    position: fixed; inset: 0; z-index: 9999;
+    background: rgba(10,22,40,0.96);
+    backdrop-filter: blur(10px);
+    display: none; align-items: center; justify-content: center;
+  }
+  #loginModal.open { display: flex; }
+  .login-box {
+    background: var(--navy2);
+    border: 1px solid var(--border);
+    border-radius: 20px; padding: 40px;
+    width: 100%; max-width: 420px; margin: 20px;
+  }
+  .login-box .login-header { text-align: center; margin-bottom: 32px; }
+  .login-box .login-header .login-logo {
+    font-family: 'Bebas Neue'; font-size: 36px; letter-spacing: 4px; color: var(--accent);
+  }
+  .login-box .login-header p { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .login-field { margin-bottom: 16px; }
+  .login-field label {
+    font-size: 11px; color: var(--muted); letter-spacing: 1px;
+    text-transform: uppercase; display: block; margin-bottom: 6px;
+  }
+  .login-field input {
+    width: 100%; background: var(--navy); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 16px; color: var(--text);
+    font-family: 'DM Sans'; font-size: 14px; outline: none;
+    transition: border-color 0.2s;
+  }
+  .login-field input:focus { border-color: var(--accent); }
+  #loginError {
+    color: var(--red); font-size: 13px; margin-bottom: 12px;
+    display: none; text-align: center;
+  }
+  .btn-cancel {
+    width: 100%; margin-top: 8px; background: none; border: none;
+    color: var(--muted); cursor: pointer; font-family: 'DM Sans';
+    font-size: 14px; padding: 8px; transition: color 0.2s;
+  }
+  .btn-cancel:hover { color: var(--text); }
+
+  /* login/user button in header */
+  .login-btn {
+    background: none !important; border: 1px solid var(--border) !important;
+    color: var(--text) !important; font-weight: 500 !important;
+    padding: 8px 18px !important; border-radius: 8px !important;
+    cursor: pointer; font-family: 'DM Sans'; font-size: 14px;
+    transition: all 0.2s; white-space: nowrap;
+  }
+  .login-btn:hover { border-color: var(--accent) !important; color: var(--accent) !important; }
+  .login-btn.signed-in {
+    background: rgba(232,184,75,0.1) !important;
+    border-color: rgba(232,184,75,0.3) !important;
+    color: var(--accent) !important;
+  }
 </style>
 </head>
 <body>
@@ -505,11 +563,12 @@
     </div>
   </div>
   <nav>
-    <button class="active" onclick="showPage('rankings')">🏆 Rankings</button>
-    <button onclick="showPage('calculator')">⚡ Calcular Rating</button>
-    <button onclick="showPage('membresia')">🪪 Membresía</button>
-    <button class="admin-btn" onclick="showPage('admin')">⚙ Admin</button>
+    <button id="navRankings" class="active" onclick="showPage('rankings')">🏆 Rankings</button>
+    <button id="navCalculator" style="display:none" onclick="showPage('calculator')">⚡ Calcular Rating</button>
+    <button id="navMembresia" style="display:none" onclick="showPage('membresia')">🪪 Membresía</button>
+    <button id="navAdmin" style="display:none" onclick="showPage('admin')">⚙ Admin</button>
   </nav>
+  <button class="login-btn" id="loginBtn" onclick="showLogin()">🔐 Iniciar Sesión</button>
 </header>
 
 <!-- ══════════════════════════════════════════
@@ -531,11 +590,16 @@
 
   <div class="filters">
     <div class="filter-chip on" onclick="setFilter(this,'all')">Todos</div>
-    <div class="filter-chip" onclick="setFilter(this,'Masculino')">♂ Masculino</div>
-    <div class="filter-chip" onclick="setFilter(this,'Femenino')">♀ Femenino</div>
-    <div class="filter-chip" onclick="setFilter(this,'Juv21U')">Sub-21</div>
-    <div class="filter-chip" onclick="setFilter(this,'Juv21')">Juvenil</div>
-    <div class="filter-chip" onclick="setFilter(this,'Abierto')">Abierto</div>
+    <div class="filter-chip" onclick="setFilter(this,'masc')">♂ Masculino Nacional</div>
+    <div class="filter-chip" onclick="setFilter(this,'fem')">♀ Femenino Nacional</div>
+    <div class="filter-chip" onclick="setFilter(this,'u21')">Sub-21</div>
+    <div class="filter-chip" onclick="setFilter(this,'u19')">Sub-19</div>
+    <div class="filter-chip" onclick="setFilter(this,'u15')">Sub-15</div>
+    <div class="filter-chip" onclick="setFilter(this,'u13')">Sub-13</div>
+    <div class="filter-chip" onclick="setFilter(this,'u11')">Sub-11</div>
+    <div class="filter-chip" onclick="setFilter(this,'u9')">Sub-9</div>
+    <div class="filter-chip" onclick="setFilter(this,'u7')">Sub-7</div>
+    <div class="filter-chip" onclick="setFilter(this,'senior40')">Senior 40+</div>
     <div class="filter-chip" onclick="setFilter(this,'member')">✅ Solo Miembros</div>
   </div>
 
@@ -810,12 +874,41 @@
   </div>
 </div>
 
+<!-- ══════════════════════════════════════════
+     LOGIN MODAL
+═══════════════════════════════════════════ -->
+<div id="loginModal">
+  <div class="login-box">
+    <div class="login-header">
+      <div class="login-logo">FPRTM</div>
+      <p>Acceso al panel administrativo</p>
+    </div>
+    <div class="login-field">
+      <label>Email</label>
+      <input id="loginEmail" type="email" placeholder="admin@fprtm.com"
+        onkeydown="if(event.key==='Enter')signIn()">
+    </div>
+    <div class="login-field" style="margin-bottom:24px">
+      <label>Contraseña</label>
+      <input id="loginPassword" type="password" placeholder="••••••••"
+        onkeydown="if(event.key==='Enter')signIn()">
+    </div>
+    <div id="loginError"></div>
+    <button id="loginSubmitBtn" class="btn-primary" style="width:100%;margin-top:0" onclick="signIn()">Entrar</button>
+    <button class="btn-cancel" onclick="hideLogin()">Cancelar</button>
+  </div>
+</div>
+
 <script>
 // ══════════════════════════════════════════
 // SUPABASE CONFIG
 // ══════════════════════════════════════════
 const SUPABASE_URL = 'https://qrvyfdpwtearfpjruwja.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_mM59efPqpcgrR3g3_6F_Ww_h1jg4PyV';
+
+// Auth client (supabase-js v2)
+const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let currentUser = null;
 
 const SB_HEADERS = {
   'apikey': SUPABASE_KEY,
@@ -855,6 +948,79 @@ async function sbPost(table, body) {
     throw new Error(`Supabase POST ${table} (${res.status}): ${err}`);
   }
   return res.json();
+}
+
+// ══════════════════════════════════════════
+// AUTH
+// ══════════════════════════════════════════
+function updateAuthUI() {
+  const isLoggedIn = !!currentUser;
+  ['navCalculator', 'navMembresia', 'navAdmin'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = isLoggedIn ? '' : 'none';
+  });
+  const btn = document.getElementById('loginBtn');
+  if (!btn) return;
+  if (isLoggedIn) {
+    btn.textContent = '👤 ' + currentUser.email.split('@')[0] + ' · Salir';
+    btn.classList.add('signed-in');
+    btn.onclick = signOut;
+  } else {
+    btn.textContent = '🔐 Iniciar Sesión';
+    btn.classList.remove('signed-in');
+    btn.onclick = showLogin;
+  }
+}
+
+function showLogin() {
+  document.getElementById('loginModal').classList.add('open');
+  setTimeout(() => document.getElementById('loginEmail').focus(), 100);
+}
+
+function hideLogin() {
+  document.getElementById('loginModal').classList.remove('open');
+  document.getElementById('loginEmail').value = '';
+  document.getElementById('loginPassword').value = '';
+  document.getElementById('loginError').style.display = 'none';
+}
+
+async function signIn() {
+  const email    = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl    = document.getElementById('loginError');
+  const btn      = document.getElementById('loginSubmitBtn');
+
+  errEl.style.display = 'none';
+  if (!email || !password) {
+    errEl.textContent = 'Ingresa email y contraseña.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Verificando...';
+
+  const { data, error } = await _supabase.auth.signInWithPassword({ email, password });
+
+  btn.disabled = false;
+  btn.textContent = 'Entrar';
+
+  if (error) {
+    errEl.textContent = 'Credenciales incorrectas. Intenta de nuevo.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  currentUser = data.user;
+  updateAuthUI();
+  hideLogin();
+}
+
+async function signOut() {
+  await _supabase.auth.signOut();
+  currentUser = null;
+  updateAuthUI();
+  showPage('rankings');
 }
 
 // ══════════════════════════════════════════
@@ -1013,6 +1179,12 @@ const pages = {
 };
 
 function showPage(key) {
+  const PROTECTED = ['calculator', 'membresia', 'admin'];
+  if (PROTECTED.includes(key) && !currentUser) {
+    showLogin();
+    return;
+  }
+
   Object.values(pages).forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.classList.remove('active'); el.style.display = 'none'; }
@@ -1496,17 +1668,28 @@ function setMembFilter(el, val) {
 // ══════════════════════════════════════════
 // FILTER / SEARCH
 // ══════════════════════════════════════════
+// Map each chip key → Supabase filter fields.
+// Adjust the categoria values here if your DB uses different strings.
+const FILTER_MAP = {
+  'all':      {},
+  'masc':     { sexo: 'Masculino' },
+  'fem':      { sexo: 'Femenino'  },
+  'u21':      { categoria: 'Sub21'    },
+  'u19':      { categoria: 'Sub19'    },
+  'u15':      { categoria: 'Sub15'    },
+  'u13':      { categoria: 'Sub13'    },
+  'u11':      { categoria: 'Sub11'    },
+  'u9':       { categoria: 'Sub9'     },
+  'u7':       { categoria: 'Sub7'     },
+  'senior40': { categoria: 'Senior40' },
+  'member':   { member: true          },
+};
+
 let searchTimeout = null;
 
 async function filterPlayers() {
   const q = document.getElementById('searchInput').value.trim();
-  const filter = {};
-  if      (currentFilter === 'Masculino') filter.sexo = 'Masculino';
-  else if (currentFilter === 'Femenino')  filter.sexo = 'Femenino';
-  else if (currentFilter === 'Juv21U')    filter.categoria = 'Juv21U';
-  else if (currentFilter === 'Juv21')     filter.categoria = 'Juv21';
-  else if (currentFilter === 'Abierto')   filter.categoria = 'Abierto';
-  else if (currentFilter === 'member')    filter.member = true;
+  const filter = { ...(FILTER_MAP[currentFilter] || {}) };
   if (q.length >= 2) filter.search = q;
 
   try {
@@ -1533,6 +1716,17 @@ function setFilter(el, val) {
 // INIT
 // ══════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', async () => {
+  // Restore auth session if user was previously signed in
+  const { data: { session } } = await _supabase.auth.getSession();
+  currentUser = session?.user || null;
+  updateAuthUI();
+
+  // Keep auth state in sync across tabs
+  _supabase.auth.onAuthStateChange((_event, sess) => {
+    currentUser = sess?.user || null;
+    updateAuthUI();
+  });
+
   Object.values(pages).forEach(id => {
     const el = document.getElementById(id);
     if (el && id !== 'rankingsPage') el.style.display = 'none';
