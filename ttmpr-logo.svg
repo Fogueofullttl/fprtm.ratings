@@ -1,19 +1,41 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 70" width="220" height="70">
-  <!-- T (first) -->
-  <text x="0" y="58" font-family="Arial Black,Arial,sans-serif" font-size="62" font-weight="900" fill="white">T</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 160">
+  <defs>
+    <linearGradient id="pin" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#74C4FF"/>
+      <stop offset="100%" stop-color="#2B70E0"/>
+    </linearGradient>
+  </defs>
 
-  <!-- Blue accent line between T and T -->
-  <rect x="44" y="12" width="4" height="38" rx="2" fill="#3B8EEA"/>
+  <!-- ══ T1 ══ -->
+  <rect x="2"  y="12" width="112" height="22" rx="4" fill="#111d4a"/>
+  <rect x="47" y="34" width="22"  height="118" rx="4" fill="#111d4a"/>
 
-  <!-- T (second) -->
-  <text x="51" y="58" font-family="Arial Black,Arial,sans-serif" font-size="62" font-weight="900" fill="white">T</text>
+  <!-- ══ Pin accent ══ -->
+  <circle cx="129" cy="17" r="7"  fill="url(#pin)"/>
+  <rect   x="126"  y="24" width="6" height="64" rx="3" fill="url(#pin)"/>
 
-  <!-- Person figure head (above M) -->
-  <circle cx="120" cy="13" r="8" fill="white"/>
+  <!-- ══ T2 ══ -->
+  <rect x="138" y="12" width="112" height="22" rx="4" fill="#111d4a"/>
+  <rect x="183" y="34" width="22"  height="118" rx="4" fill="#111d4a"/>
 
-  <!-- M — person body doubles as M -->
-  <text x="95" y="58" font-family="Arial Black,Arial,sans-serif" font-size="62" font-weight="900" fill="white">M</text>
+  <!-- ══ Person / M ══ -->
+  <!-- Head -->
+  <circle cx="366" cy="22" r="20" fill="#111d4a"/>
+  <!-- Body -->
+  <path d="
+    M 314,50
+    C 294,65 284,100 294,152
+    L 318,152
+    C 324,124 340,103 366,92
+    C 392,103 408,124 414,152
+    L 438,152
+    C 448,100 438,65 418,50
+    Q 366,38 314,50 Z
+  " fill="#111d4a"/>
 
-  <!-- PR in cyan -->
-  <text x="145" y="58" font-family="Arial Black,Arial,sans-serif" font-size="44" font-weight="900" fill="#00E5FF">PR</text>
+  <!-- ══ PR ══ -->
+  <text x="458" y="148"
+        font-family="Arial Black, Arial, sans-serif"
+        font-size="88" font-weight="900"
+        fill="#2ED8F0">PR</text>
 </svg>
